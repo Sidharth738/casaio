@@ -124,7 +124,7 @@ export default function HomePage() {
                     Explore Curated Drops
                   </Button>
                 </Link>
-                <Link href="/seller/dashboard">
+                <Link href="/seller/register">
                   <Button size="lg" variant="outline">
                     Become A Verified Seller
                   </Button>
@@ -295,9 +295,11 @@ export default function HomePage() {
                         </span>
                       )}
                     </div>
-                    <Button size="sm" variant="secondary" className="text-xs">
-                      View Piece
-                    </Button>
+                    <Link href={`/products/${product.id}`}>
+                      <Button size="sm" variant="secondary" className="text-xs">
+                        View Piece
+                      </Button>
+                    </Link>
                   </div>
                 </div>
               </Card>

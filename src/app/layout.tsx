@@ -2,9 +2,6 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
-import { AnnouncementBar } from '@/components/layout/AnnouncementBar';
-import { StoreHeader } from '@/components/layout/StoreHeader';
-import { Footer } from '@/components/layout/Footer';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -49,10 +46,7 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-[#FBFBF9] text-zinc-900 font-sans selection:bg-amber-100 selection:text-amber-900">
         <AuthProvider>
-          <AnnouncementBar />
-          <StoreHeader />
-          <main className="flex-1">{children}</main>
-          <Footer />
+          {children}
         </AuthProvider>
       </body>
     </html>
