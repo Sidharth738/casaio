@@ -1,0 +1,61 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.role == 'admin' ||
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin'
+      );
+    }
+    
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+    
+    function isBelowMaxSize(maxMegaBytes) {
+      return request.resource.size <= maxMegaBytes * 1024 * 1024;
+    }
+
+    // Product Images: Uploaded by seller, public read
+    match /products/{sellerId}/{imageId} {
+      allow read: if true;
+      allow write: if (isAuthenticated() && request.auth.uid == sellerId && isImage() && isBelowMaxSize(5)) || isAdmin();
+      allow delete: if (isAuthenticated() && request.auth.uid == sellerId) || isAdmin();
+    }
+
+    // Review Images: Uploaded by user, public read
+    match /reviews/{userId}/{imageId} {
+      allow read: if true;
+      allow write: if isOwner(userId) && isImage() && isBelowMaxSize(3);
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // Seller KYC Documents: Read/write only by seller and admin
+    match /sellers/{sellerId}/kyc/{docId} {
+      allow read: if isOwner(sellerId) || isAdmin();
+      allow write: if isOwner(sellerId) && isBelowMaxSize(10);
+      allow delete: if isAdmin();
+    }
+
+    // Store Branding / Avatars
+    match /avatars/{userId}/{imageId} {
+      allow read: if true;
+      allow write: if isOwner(userId) && isImage() && isBelowMaxSize(2);
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // Default Deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
