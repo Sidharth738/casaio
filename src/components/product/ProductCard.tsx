@@ -6,6 +6,7 @@ import { Heart, ShoppingBag, Star } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency } from '@/lib/utils';
+import { useWishlist } from '@/hooks/useWishlist';
 import type { Product } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -15,6 +16,9 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, className }: ProductCardProps) {
+  const { isInWishlist, toggleWishlist } = useWishlist();
+  const isWishlisted = isInWishlist(product.id);
+
   const primaryImage = product.images.find((img) => img.isPrimary) ?? product.images[0];
   const discount =
     product.compareAtPrice && product.compareAtPrice > product.price
@@ -24,29 +28,46 @@ export function ProductCard({ product, className }: ProductCardProps) {
   const isLowStock = product.stock > 0 && product.stock <= product.lowStockThreshold;
   const isOutOfStock = product.stock === 0;
 
+  const handleToggleWishlist = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    toggleWishlist({
+      productId: product.id,
+      title: product.title,
+      slug: product.slug,
+      imageUrl: primaryImage?.url ?? '',
+      price: product.price,
+      compareAtPrice: product.compareAtPrice,
+      sellerStoreName: product.sellerStoreName,
+      inStock: product.stock > 0,
+    });
+  };
+
   return (
     <div className={cn('group flex flex-col rounded-xl border border-zinc-200/80 bg-white overflow-hidden shadow-xs hover:shadow-md transition-all duration-300', className)}>
       {/* Image */}
-      <Link href={`/products/${product.slug}`} className="relative block aspect-4/3 overflow-hidden bg-zinc-100 shrink-0">
-        {primaryImage ? (
-          <Image
-            src={primaryImage.url}
-            alt={primaryImage.altText ?? product.title}
-            fill
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-            className={cn(
-              'object-cover transition-transform duration-500 group-hover:scale-105',
-              isOutOfStock && 'opacity-60'
-            )}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-zinc-100">
-            <ShoppingBag className="w-10 h-10 text-zinc-300" />
-          </div>
-        )}
+      <div className="relative aspect-4/3 overflow-hidden bg-zinc-100 shrink-0">
+        <Link href={`/products/${product.slug}`} className="relative block w-full h-full">
+          {primaryImage ? (
+            <Image
+              src={primaryImage.url}
+              alt={primaryImage.altText ?? product.title}
+              fill
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+              className={cn(
+                'object-cover transition-transform duration-500 group-hover:scale-105',
+                isOutOfStock && 'opacity-60'
+              )}
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-zinc-100">
+              <ShoppingBag className="w-10 h-10 text-zinc-300" />
+            </div>
+          )}
+        </Link>
 
         {/* Badges overlay */}
-        <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10">
+        <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-10 pointer-events-none">
           {discount && (
             <Badge variant="accent" size="sm">
               {discount}% OFF
@@ -71,12 +92,19 @@ export function ProductCard({ product, className }: ProductCardProps) {
 
         {/* Wishlist button */}
         <button
-          aria-label="Add to wishlist"
-          className="absolute top-3 right-3 z-10 w-8 h-8 rounded-full bg-white/90 border border-zinc-200 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-white hover:text-rose-500"
+          type="button"
+          onClick={handleToggleWishlist}
+          aria-label={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+          className={cn(
+            'absolute top-3 right-3 z-10 w-8 h-8 rounded-full border flex items-center justify-center transition-all shadow-xs',
+            isWishlisted
+              ? 'bg-rose-50 border-rose-200 text-rose-600 opacity-100'
+              : 'bg-white/90 border-zinc-200 text-zinc-600 hover:bg-white hover:text-rose-500 opacity-0 group-hover:opacity-100'
+          )}
         >
-          <Heart className="w-4 h-4" />
+          <Heart className={cn('w-4 h-4', isWishlisted && 'fill-rose-500')} />
         </button>
-      </Link>
+      </div>
 
       {/* Content */}
       <div className="flex flex-col flex-1 p-4">

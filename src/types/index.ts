@@ -6,3 +6,4 @@ export * from './order';
 export * from './review';
 export * from './coupon';
 export * from './notification';
+export * from './wishlist';

@@ -6,6 +6,8 @@ import { Heart, ShoppingBag, Zap, Check, ShieldCheck, Truck, RefreshCw } from 'l
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency } from '@/lib/utils';
+import { useCart } from '@/hooks/useCart';
+import { useWishlist } from '@/hooks/useWishlist';
 import type { Product, ProductVariant } from '@/types';
 
 interface ProductActionsProps {
@@ -14,14 +16,18 @@ interface ProductActionsProps {
 
 export function ProductActions({ product }: ProductActionsProps) {
   const router = useRouter();
+  const { addItem, openCart } = useCart();
+  const { isInWishlist, toggleWishlist } = useWishlist();
+
   const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(
     product.hasVariants && product.variants && product.variants.length > 0
       ? product.variants[0]
       : null
   );
   const [quantity, setQuantity] = useState(1);
-  const [isWishlisted, setIsWishlisted] = useState(false);
   const [addedMessage, setAddedMessage] = useState(false);
+
+  const isWishlisted = isInWishlist(product.id);
 
   const currentPrice = selectedVariant ? selectedVariant.price : product.price;
   const currentCompareAtPrice = selectedVariant?.compareAtPrice ?? product.compareAtPrice;
@@ -38,26 +44,51 @@ export function ProductActions({ product }: ProductActionsProps) {
     });
   };
 
-  const handleAddToCart = () => {
+  const handleAddToCart = (openDrawer = true) => {
     if (isOutOfStock) return;
-    // Dispatches custom event for cart listeners until Phase 4 CartContext connects
-    const cartEvent = new CustomEvent('casaio:cart:add', {
-      detail: {
+    const primaryImg = product.images.find((img) => img.isPrimary) ?? product.images[0];
+    addItem(
+      {
         productId: product.id,
         variantSku: selectedVariant?.sku,
-        quantity,
+        title: selectedVariant ? `${product.title} (${selectedVariant.title})` : product.title,
+        slug: product.slug,
+        imageUrl: primaryImg?.url ?? '',
+        unitPrice: currentPrice,
+        compareAtPrice: currentCompareAtPrice,
+        sellerId: product.sellerId,
+        sellerStoreName: product.sellerStoreName,
+        maxStock: currentStock,
       },
-    });
-    window.dispatchEvent(cartEvent);
+      quantity
+    );
 
     setAddedMessage(true);
     setTimeout(() => setAddedMessage(false), 2500);
+
+    if (openDrawer) {
+      openCart();
+    }
   };
 
   const handleBuyNow = () => {
     if (isOutOfStock) return;
-    handleAddToCart();
+    handleAddToCart(false);
     router.push('/checkout');
+  };
+
+  const handleToggleWishlist = () => {
+    const primaryImg = product.images.find((img) => img.isPrimary) ?? product.images[0];
+    toggleWishlist({
+      productId: product.id,
+      title: product.title,
+      slug: product.slug,
+      imageUrl: primaryImg?.url ?? '',
+      price: product.price,
+      compareAtPrice: product.compareAtPrice,
+      sellerStoreName: product.sellerStoreName,
+      inStock: product.stock > 0,
+    });
   };
 
   return (
@@ -169,7 +200,7 @@ export function ProductActions({ product }: ProductActionsProps) {
 
           <button
             type="button"
-            onClick={() => setIsWishlisted(!isWishlisted)}
+            onClick={handleToggleWishlist}
             className={`p-2.5 rounded-lg border transition-colors flex items-center justify-center ${
               isWishlisted
                 ? 'border-rose-200 bg-rose-50 text-rose-600'
@@ -188,7 +219,7 @@ export function ProductActions({ product }: ProductActionsProps) {
             size="lg"
             variant="secondary"
             disabled={isOutOfStock}
-            onClick={handleAddToCart}
+            onClick={() => handleAddToCart(true)}
             leftIcon={addedMessage ? <Check className="w-4 h-4 text-emerald-600" /> : <ShoppingBag className="w-4 h-4" />}
             className="w-full text-sm"
           >

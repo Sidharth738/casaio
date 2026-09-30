@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Logo } from '@/components/common/Logo';
 import { useAuth } from '@/hooks/useAuth';
+import { useCart } from '@/hooks/useCart';
+import { useWishlist } from '@/hooks/useWishlist';
 import { Badge } from '@/components/ui/Badge';
 import {
   Search,
@@ -22,6 +24,8 @@ import {
 export const StoreHeader: React.FC = () => {
   const router = useRouter();
   const { user, role, isAuthenticated, logout } = useAuth();
+  const { itemCount: cartCount, openCart } = useCart();
+  const { itemCount: wishlistCount } = useWishlist();
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -53,7 +57,8 @@ export const StoreHeader: React.FC = () => {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      router.push(`/products?searchQuery=${encodeURIComponent(searchQuery.trim())}`);
+      router.push(`/products?q=${encodeURIComponent(searchQuery.trim())}`);
+      setIsSearchOpen(false);
     }
   };
 
@@ -125,6 +130,11 @@ export const StoreHeader: React.FC = () => {
               aria-label="Saved items wishlist"
             >
               <Heart className="w-5 h-5" />
+              {wishlistCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 bg-rose-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center ring-2 ring-white">
+                  {wishlistCount}
+                </span>
+              )}
             </Link>
 
             {/* Auth / Account Dropdown */}
@@ -219,18 +229,18 @@ export const StoreHeader: React.FC = () => {
               </Link>
             )}
 
-            {/* Shopping Cart */}
-            <Link
-              href="/cart"
+            {/* Shopping Cart Drawer Trigger */}
+            <button
+              onClick={openCart}
               className="flex items-center gap-2 p-2 sm:px-3 sm:py-2 text-zinc-900 bg-zinc-900 hover:bg-zinc-800 text-white rounded-full transition-colors relative shadow-xs"
-              aria-label="Shopping Cart"
+              aria-label="Open Shopping Bag"
             >
               <ShoppingBag className="w-4 h-4 sm:w-4 sm:h-4 text-amber-400" />
               <span className="hidden sm:inline text-xs font-medium tracking-wide">Cart</span>
               <span className="bg-amber-500 text-zinc-950 text-[11px] font-bold rounded-full w-5 h-5 flex items-center justify-center -ml-1 sm:ml-0">
-                0
+                {cartCount}
               </span>
-            </Link>
+            </button>
           </div>
         </div>
 

@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
+import { WishlistProvider } from '@/context/WishlistContext';
+import { CartProvider } from '@/context/CartContext';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -46,7 +48,11 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col bg-[#FBFBF9] text-zinc-900 font-sans selection:bg-amber-100 selection:text-amber-900">
         <AuthProvider>
-          {children}
+          <WishlistProvider>
+            <CartProvider>
+              {children}
+            </CartProvider>
+          </WishlistProvider>
         </AuthProvider>
       </body>
     </html>
