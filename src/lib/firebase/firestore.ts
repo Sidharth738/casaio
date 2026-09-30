@@ -424,3 +424,66 @@ export async function validateCouponCode(code: string, subtotal: number): Promis
   }
 }
 
+// ─── Seller Management ────────────────────────────────────────────────────────
+
+import type { SellerProfile } from '@/types';
+
+export async function getSellerProfile(sellerId: string): Promise<SellerProfile | null> {
+  if (!sellerId) return null;
+  const snap = await getDoc(doc(db, 'sellers', sellerId));
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() } as SellerProfile;
+}
+
+export async function getSellerProducts(sellerId: string): Promise<Product[]> {
+  if (!sellerId) return [];
+  try {
+    const q = query(
+      collection(db, 'products'),
+      where('sellerId', '==', sellerId),
+      orderBy('createdAt', 'desc')
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => docToData<Product>(d));
+  } catch {
+    const fallbackQ = query(
+      collection(db, 'products'),
+      where('sellerId', '==', sellerId)
+    );
+    const snap = await getDocs(fallbackQ);
+    const items = snap.docs.map((d) => docToData<Product>(d));
+    return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+}
+
+export async function getSellerOrders(sellerId: string): Promise<Order[]> {
+  if (!sellerId) return [];
+  try {
+    const q = query(
+      collection(db, 'orders'),
+      where('sellerIds', 'array-contains', sellerId),
+      orderBy('createdAt', 'desc')
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => docToData<Order>(d));
+  } catch {
+    const fallbackQ = query(
+      collection(db, 'orders'),
+      where('sellerIds', 'array-contains', sellerId)
+    );
+    const snap = await getDocs(fallbackQ);
+    const items = snap.docs.map((d) => docToData<Order>(d));
+    return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+}
+
+export async function updateProductStock(productId: string, newStock: number): Promise<void> {
+  const pRef = doc(db, 'products', productId);
+  await updateDoc(pRef, {
+    stock: Math.max(0, newStock),
+    status: newStock <= 0 ? 'out_of_stock' : 'active',
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+
