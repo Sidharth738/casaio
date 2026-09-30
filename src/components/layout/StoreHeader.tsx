@@ -1,26 +1,46 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Logo } from '@/components/common/Logo';
+import { useAuth } from '@/hooks/useAuth';
+import { Badge } from '@/components/ui/Badge';
 import {
   Search,
   ShoppingBag,
   Heart,
-  User,
+  User as UserIcon,
   Menu,
   X,
   Store,
+  Shield,
+  LogOut,
+  Package,
 } from 'lucide-react';
 
 export const StoreHeader: React.FC = () => {
   const router = useRouter();
+  const { user, role, isAuthenticated, logout } = useAuth();
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Sample category navigation items
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close user dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const navCategories = [
     { name: 'All Products', href: '/products' },
     { name: 'Living Room', href: '/categories/living-room' },
@@ -35,6 +55,12 @@ export const StoreHeader: React.FC = () => {
     if (searchQuery.trim()) {
       router.push(`/products?searchQuery=${encodeURIComponent(searchQuery.trim())}`);
     }
+  };
+
+  const handleSignOut = async () => {
+    setIsUserMenuOpen(false);
+    await logout();
+    router.push('/');
   };
 
   return (
@@ -101,14 +127,97 @@ export const StoreHeader: React.FC = () => {
               <Heart className="w-5 h-5" />
             </Link>
 
-            {/* Account Link */}
-            <Link
-              href="/login"
-              className="p-2 text-zinc-700 hover:text-zinc-900 rounded-full hover:bg-zinc-100 relative transition-colors"
-              aria-label="User account or sign in"
-            >
-              <User className="w-5 h-5" />
-            </Link>
+            {/* Auth / Account Dropdown */}
+            {isAuthenticated && user ? (
+              <div className="relative" ref={userMenuRef}>
+                <button
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                  className="flex items-center gap-2 p-1 pl-2 pr-2.5 rounded-full border border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50 transition-all text-zinc-800"
+                >
+                  <div className="w-6 h-6 rounded-full bg-zinc-900 text-amber-400 font-serif font-bold text-xs flex items-center justify-center">
+                    {user.displayName ? user.displayName.charAt(0).toUpperCase() : 'U'}
+                  </div>
+                  <span className="hidden sm:inline text-xs font-semibold max-w-[80px] truncate">
+                    {user.displayName.split(' ')[0]}
+                  </span>
+                </button>
+
+                {isUserMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-xl border border-zinc-200 py-2 z-50 animate-fade-in text-xs">
+                    <div className="px-4 py-2 border-b border-zinc-100">
+                      <p className="font-semibold text-zinc-900 truncate">{user.displayName}</p>
+                      <p className="text-[11px] text-zinc-500 truncate">{user.email}</p>
+                      <div className="mt-1">
+                        <Badge variant="accent" size="sm">
+                          {role}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <div className="py-1">
+                      <Link
+                        href="/account/profile"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="flex items-center gap-2 px-4 py-2 text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900"
+                      >
+                        <UserIcon className="w-4 h-4 text-zinc-400" />
+                        <span>My Profile</span>
+                      </Link>
+
+                      <Link
+                        href="/account/orders"
+                        onClick={() => setIsUserMenuOpen(false)}
+                        className="flex items-center gap-2 px-4 py-2 text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900"
+                      >
+                        <Package className="w-4 h-4 text-zinc-400" />
+                        <span>Order History</span>
+                      </Link>
+
+                      {(role === 'seller' || role === 'admin') && (
+                        <Link
+                          href="/seller/dashboard"
+                          onClick={() => setIsUserMenuOpen(false)}
+                          className="flex items-center gap-2 px-4 py-2 text-amber-700 hover:bg-amber-50"
+                        >
+                          <Store className="w-4 h-4" />
+                          <span>Seller Dashboard</span>
+                        </Link>
+                      )}
+
+                      {role === 'admin' && (
+                        <Link
+                          href="/admin/dashboard"
+                          onClick={() => setIsUserMenuOpen(false)}
+                          className="flex items-center gap-2 px-4 py-2 text-zinc-900 font-semibold hover:bg-zinc-50"
+                        >
+                          <Shield className="w-4 h-4 text-amber-600" />
+                          <span>Admin Portal</span>
+                        </Link>
+                      )}
+                    </div>
+
+                    <div className="pt-1 border-t border-zinc-100">
+                      <button
+                        onClick={handleSignOut}
+                        className="w-full flex items-center gap-2 px-4 py-2 text-red-600 hover:bg-red-50"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                className="flex items-center gap-1.5 p-2 sm:px-3 sm:py-1.5 text-zinc-700 hover:text-zinc-900 rounded-full hover:bg-zinc-100 transition-colors"
+                aria-label="User sign in"
+              >
+                <UserIcon className="w-5 h-5 sm:w-4 sm:h-4 text-zinc-600" />
+                <span className="hidden sm:inline text-xs font-semibold">Sign In</span>
+              </Link>
+            )}
 
             {/* Shopping Cart */}
             <Link
@@ -125,7 +234,7 @@ export const StoreHeader: React.FC = () => {
           </div>
         </div>
 
-        {/* Mobile Search Input Drawer (Expands below header when toggled) */}
+        {/* Mobile Search Input Drawer */}
         {isSearchOpen && (
           <div className="md:hidden pb-3 pt-1 border-t border-zinc-100 animate-fade-in">
             <form onSubmit={handleSearchSubmit} className="relative w-full">
@@ -180,6 +289,39 @@ export const StoreHeader: React.FC = () => {
           </div>
 
           <div className="mt-6 pt-4 border-t border-zinc-100 space-y-2">
+            {isAuthenticated ? (
+              <>
+                <Link
+                  href="/account/profile"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="block px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 rounded-md"
+                >
+                  My Profile ({user?.displayName})
+                </Link>
+                <Link
+                  href="/account/orders"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="block px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 rounded-md"
+                >
+                  My Orders & Tracking
+                </Link>
+                <button
+                  onClick={handleSignOut}
+                  className="w-full text-left block px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-md"
+                >
+                  Sign Out
+                </button>
+              </>
+            ) : (
+              <Link
+                href="/login"
+                onClick={() => setIsMobileMenuOpen(false)}
+                className="block px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 rounded-md"
+              >
+                Customer Sign In
+              </Link>
+            )}
+
             <Link
               href="/seller/dashboard"
               onClick={() => setIsMobileMenuOpen(false)}
@@ -187,20 +329,6 @@ export const StoreHeader: React.FC = () => {
             >
               <Store className="w-4 h-4" />
               <span>Seller Hub & Registration</span>
-            </Link>
-            <Link
-              href="/account/orders"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="block px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 rounded-md"
-            >
-              My Orders & Tracking
-            </Link>
-            <Link
-              href="/login"
-              onClick={() => setIsMobileMenuOpen(false)}
-              className="block px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 rounded-md"
-            >
-              Customer Sign In
             </Link>
           </div>
         </div>

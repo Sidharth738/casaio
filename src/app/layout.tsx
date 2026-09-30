@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
+import { AuthProvider } from '@/context/AuthContext';
 import { AnnouncementBar } from '@/components/layout/AnnouncementBar';
 import { StoreHeader } from '@/components/layout/StoreHeader';
 import { Footer } from '@/components/layout/Footer';
@@ -47,10 +48,12 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col bg-[#FBFBF9] text-zinc-900 font-sans selection:bg-amber-100 selection:text-amber-900">
-        <AnnouncementBar />
-        <StoreHeader />
-        <main className="flex-1">{children}</main>
-        <Footer />
+        <AuthProvider>
+          <AnnouncementBar />
+          <StoreHeader />
+          <main className="flex-1">{children}</main>
+          <Footer />
+        </AuthProvider>
       </body>
     </html>
   );
