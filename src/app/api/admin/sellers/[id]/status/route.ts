@@ -1,0 +1,77 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { adminDb, adminAuth } from '@/lib/firebase/admin';
+import type { SellerStatus } from '@/types';
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const body = await req.json();
+    const { status, statusReason } = body as {
+      status: SellerStatus;
+      statusReason?: string;
+    };
+
+    if (!status || !['pending', 'approved', 'rejected', 'suspended'].includes(status)) {
+      return NextResponse.json(
+        { error: 'Valid seller status is required' },
+        { status: 400 }
+      );
+    }
+
+    const sellerRef = adminDb.collection('sellers').doc(id);
+    const snap = await sellerRef.get();
+
+    if (!snap.exists) {
+      return NextResponse.json({ error: 'Seller application not found' }, { status: 404 });
+    }
+
+    const now = new Date().toISOString();
+
+    // 1. Update the seller document
+    await sellerRef.update({
+      status,
+      statusReason: statusReason || null,
+      updatedAt: now,
+    });
+
+    // 2. If approved, promote user role in both Firestore and Firebase Auth Custom Claims
+    const userRef = adminDb.collection('users').doc(id);
+    if (status === 'approved') {
+      await userRef.update({
+        role: 'seller',
+        updatedAt: now,
+      });
+
+      try {
+        await adminAuth.setCustomUserClaims(id, { role: 'seller' });
+      } catch (authErr) {
+        console.warn('Failed setting custom claim for seller, continuing with doc role:', authErr);
+      }
+    } else if (status === 'suspended' || status === 'rejected') {
+      // Revert role back to customer if rejected or suspended
+      await userRef.update({
+        role: 'customer',
+        updatedAt: now,
+      });
+
+      try {
+        await adminAuth.setCustomUserClaims(id, { role: 'customer' });
+      } catch (authErr) {
+        console.warn('Failed reverting custom claim for seller:', authErr);
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Seller status updated to "${status}"`,
+      status,
+    });
+  } catch (error: unknown) {
+    console.error('Admin seller status update error:', error);
+    const msg = error instanceof Error ? error.message : 'Failed to update seller status';
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}

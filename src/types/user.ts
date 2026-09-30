@@ -2,6 +2,7 @@ export type UserRole = 'customer' | 'seller' | 'admin';
 export type UserStatus = 'active' | 'suspended';
 
 export interface UserProfile {
+  id?: string;
   uid: string;
   email: string;
   displayName: string;

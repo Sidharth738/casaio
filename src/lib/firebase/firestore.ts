@@ -26,10 +26,11 @@ import type { Product, Category, ProductFilterParams } from '@/types';
 
 // ─── Generic helpers ──────────────────────────────────────────────────────────
 
-function docToData<T extends { id: string }>(
+function docToData<T>(
   snap: QueryDocumentSnapshot<DocumentData>
 ): T {
-  return { id: snap.id, ...snap.data() } as T;
+  const data = snap.data();
+  return { id: snap.id, uid: data.uid || snap.id, ...data } as unknown as T;
 }
 
 // ─── Categories ───────────────────────────────────────────────────────────────
@@ -485,5 +486,123 @@ export async function updateProductStock(productId: string, newStock: number): P
     updatedAt: new Date().toISOString(),
   });
 }
+
+// ─── Admin Oversight Helpers ──────────────────────────────────────────────────
+
+import type { UserProfile } from '@/types';
+
+export async function getAllSellers(): Promise<SellerProfile[]> {
+  try {
+    const q = query(collection(db, 'sellers'), orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => docToData<SellerProfile>(d));
+  } catch {
+    const snap = await getDocs(collection(db, 'sellers'));
+    return snap.docs.map((d) => docToData<SellerProfile>(d));
+  }
+}
+
+export async function getAllProductsAdmin(): Promise<Product[]> {
+  try {
+    const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => docToData<Product>(d));
+  } catch {
+    const snap = await getDocs(collection(db, 'products'));
+    return snap.docs.map((d) => docToData<Product>(d));
+  }
+}
+
+export async function getAllOrdersAdmin(): Promise<Order[]> {
+  try {
+    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => docToData<Order>(d));
+  } catch {
+    const snap = await getDocs(collection(db, 'orders'));
+    return snap.docs.map((d) => docToData<Order>(d));
+  }
+}
+
+export async function getAllCoupons(): Promise<Coupon[]> {
+  try {
+    const q = query(collection(db, 'coupons'), orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => docToData<Coupon>(d));
+  } catch {
+    const snap = await getDocs(collection(db, 'coupons'));
+    return snap.docs.map((d) => docToData<Coupon>(d));
+  }
+}
+
+export async function getAllUsersAdmin(): Promise<UserProfile[]> {
+  try {
+    const q = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => docToData<UserProfile>(d));
+  } catch {
+    const snap = await getDocs(collection(db, 'users'));
+    return snap.docs.map((d) => docToData<UserProfile>(d));
+  }
+}
+
+export async function saveCategory(
+  data: Partial<Category>,
+  categoryId?: string
+): Promise<string> {
+  const colRef = collection(db, 'categories');
+  const now = new Date().toISOString();
+  if (categoryId) {
+    const docRef = doc(db, 'categories', categoryId);
+    await updateDoc(docRef, {
+      ...data,
+      updatedAt: now,
+    });
+    return categoryId;
+  } else {
+    const docRef = await addDoc(colRef, {
+      ...data,
+      isActive: data.isActive ?? true,
+      sortOrder: data.sortOrder ?? 1,
+      createdAt: now,
+      updatedAt: now,
+    });
+    return docRef.id;
+  }
+}
+
+export async function deleteCategory(categoryId: string): Promise<void> {
+  await deleteDoc(doc(db, 'categories', categoryId));
+}
+
+export async function saveCoupon(
+  data: Partial<Coupon>,
+  couponId?: string
+): Promise<string> {
+  const colRef = collection(db, 'coupons');
+  const now = new Date().toISOString();
+  if (couponId) {
+    const docRef = doc(db, 'coupons', couponId);
+    await updateDoc(docRef, {
+      ...data,
+      updatedAt: now,
+    });
+    return couponId;
+  } else {
+    const docRef = await addDoc(colRef, {
+      ...data,
+      code: (data.code || '').trim().toUpperCase(),
+      usageCount: 0,
+      isActive: data.isActive ?? true,
+      createdAt: now,
+    });
+    return docRef.id;
+  }
+}
+
+export async function deleteCoupon(couponId: string): Promise<void> {
+  await deleteDoc(doc(db, 'coupons', couponId));
+}
+
 
 
