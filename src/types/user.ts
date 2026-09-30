@@ -6,7 +6,7 @@ export interface UserProfile {
   email: string;
   displayName: string;
   phoneNumber?: string;
-  photoURL?: string;
+  photoURL?: string | null;
   role: UserRole;
   status: UserStatus;
   defaultShippingAddressId?: string;

@@ -68,7 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         uid: fbUser.uid,
         email: fbUser.email || data.email,
         displayName: data.displayName || fbUser.displayName || 'Customer',
-        photoURL: fbUser.photoURL || data.photoURL,
+        photoURL: fbUser.photoURL || data.photoURL || null,
         role: data.role || 'customer',
         status: data.status || 'active',
       };
@@ -80,7 +80,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       uid: fbUser.uid,
       email: fbUser.email || '',
       displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'Customer',
-      photoURL: fbUser.photoURL || undefined,
+      photoURL: fbUser.photoURL || null,
       role: 'customer',
       status: 'active',
       createdAt: now,
