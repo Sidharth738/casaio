@@ -64,6 +64,39 @@ export async function POST(
       }
     }
 
+    // Dispatch in-app notification to the seller user
+    try {
+      const title =
+        status === 'approved'
+          ? 'Seller Application Approved!'
+          : status === 'rejected'
+          ? 'Seller Application Not Approved'
+          : status === 'suspended'
+          ? 'Seller Account Suspended'
+          : 'Seller Application Status Updated';
+
+      const message =
+        status === 'approved'
+          ? 'Congratulations! Your workshop has been approved. You now have access to your Seller Portal.'
+          : status === 'rejected'
+          ? `Your seller application could not be approved at this time.${statusReason ? ` Reason: ${statusReason}` : ''}`
+          : `Your seller account status has been updated to "${status}".`;
+
+      const link = status === 'approved' ? '/seller/dashboard' : '/account/profile';
+
+      await adminDb.collection('notifications').add({
+        userId: id,
+        title,
+        message,
+        type: 'seller_application',
+        link,
+        read: false,
+        createdAt: now,
+      });
+    } catch (notifErr) {
+      console.warn('Failed dispatching seller status notification:', notifErr);
+    }
+
     return NextResponse.json({
       success: true,
       message: `Seller status updated to "${status}"`,

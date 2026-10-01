@@ -5,6 +5,7 @@ import type { UserAddress } from '@/types';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Home, Briefcase, MapPin, Check } from 'lucide-react';
+import { AddressAutocomplete } from './AddressAutocomplete';
 
 interface AddressFormProps {
   initialData?: UserAddress | null;
@@ -32,6 +33,7 @@ export const AddressForm: React.FC<AddressFormProps> = ({
     country: initialData?.country || 'India',
     addressType: initialData?.addressType || ('home' as 'home' | 'work' | 'other'),
     isDefault: initialData?.isDefault ?? false,
+    coordinates: initialData?.coordinates,
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -65,6 +67,27 @@ export const AddressForm: React.FC<AddressFormProps> = ({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Google Maps Quick Search */}
+      <div className="space-y-1.5 pb-2 border-b border-zinc-100">
+        <label className="block text-xs font-semibold text-zinc-800">
+          Search with Google Maps
+        </label>
+        <AddressAutocomplete
+          onSelect={(place) => {
+            setFormData((prev) => ({
+              ...prev,
+              addressLine1: place.addressLine1 || place.mainText || prev.addressLine1,
+              city: place.city || prev.city,
+              state: place.state || prev.state,
+              postalCode: place.postalCode || prev.postalCode,
+              coordinates: place.coordinates || prev.coordinates,
+            }));
+          }}
+        />
+        <p className="text-[11px] text-zinc-400">
+          Find your locality or building to automatically fill street, city, state, and PIN code.
+        </p>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input
           label="Full Name *"

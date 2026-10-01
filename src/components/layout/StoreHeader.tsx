@@ -8,6 +8,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useCart } from '@/hooks/useCart';
 import { useWishlist } from '@/hooks/useWishlist';
 import { Badge } from '@/components/ui/Badge';
+import { NotificationBell } from '@/components/layout/NotificationBell';
 import {
   Search,
   ShoppingBag,
@@ -136,6 +137,9 @@ export const StoreHeader: React.FC = () => {
                 </span>
               )}
             </Link>
+
+            {/* In-App Notifications */}
+            <NotificationBell />
 
             {/* Auth / Account Dropdown */}
             {isAuthenticated && user ? (

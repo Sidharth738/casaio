@@ -657,5 +657,77 @@ export async function deleteReview(reviewId: string): Promise<void> {
   await deleteDoc(doc(db, 'reviews', reviewId));
 }
 
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+import type { AppNotification } from '@/types';
+
+export async function getUserNotifications(userId: string): Promise<AppNotification[]> {
+  if (!userId) return [];
+  try {
+    const q = query(
+      collection(db, 'notifications'),
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => docToData<AppNotification>(d));
+  } catch {
+    const fallbackQ = query(
+      collection(db, 'notifications'),
+      where('userId', '==', userId)
+    );
+    const snap = await getDocs(fallbackQ);
+    const list = snap.docs.map((d) => docToData<AppNotification>(d));
+    return list
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, 50);
+  }
+}
+
+export async function markNotificationAsRead(notificationId: string): Promise<void> {
+  const nRef = doc(db, 'notifications', notificationId);
+  await updateDoc(nRef, {
+    read: true,
+  });
+}
+
+export async function markAllNotificationsAsRead(userId: string): Promise<void> {
+  if (!userId) return;
+  try {
+    const q = query(
+      collection(db, 'notifications'),
+      where('userId', '==', userId),
+      where('read', '==', false)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return;
+
+    const batch = writeBatch(db);
+    snap.docs.forEach((docSnap) => {
+      batch.update(docSnap.ref, { read: true });
+    });
+    await batch.commit();
+  } catch (err) {
+    console.warn('Failed marking all notifications read:', err);
+  }
+}
+
+export async function createNotification(
+  data: Omit<AppNotification, 'id'>
+): Promise<string> {
+  const colRef = collection(db, 'notifications');
+  const docRef = await addDoc(colRef, {
+    ...data,
+    read: data.read ?? false,
+    createdAt: data.createdAt || new Date().toISOString(),
+  });
+  return docRef.id;
+}
+
+export async function deleteNotification(notificationId: string): Promise<void> {
+  await deleteDoc(doc(db, 'notifications', notificationId));
+}
+
 
 

@@ -212,6 +212,33 @@ export async function POST(req: NextRequest) {
 
     await batch.commit();
 
+    // 6. Create in-app notifications for customer and sellers
+    try {
+      await adminDb.collection('notifications').add({
+        userId: customerId,
+        title: `Order Confirmed: #${orderNumber}`,
+        message: `Your artisanal order #${orderNumber} for ₹${totalAmount.toLocaleString('en-IN')} has been placed successfully.`,
+        type: 'order',
+        link: `/account/orders/${orderDocRef.id}`,
+        read: false,
+        createdAt: now,
+      });
+
+      for (const sId of Array.from(sellerIdsSet)) {
+        await adminDb.collection('notifications').add({
+          userId: sId,
+          title: 'New Order Received',
+          message: `Order #${orderNumber} has been placed with items from your catalog.`,
+          type: 'order',
+          link: `/seller/orders/${orderDocRef.id}`,
+          read: false,
+          createdAt: now,
+        });
+      }
+    } catch (notifErr) {
+      console.warn('Failed dispatching order notifications:', notifErr);
+    }
+
     return NextResponse.json({
       success: true,
       orderId: orderDocRef.id,

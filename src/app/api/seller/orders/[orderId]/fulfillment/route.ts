@@ -115,6 +115,25 @@ export async function POST(
       updatedAt: now,
     });
 
+    // Notify customer about fulfillment progress
+    if (orderData?.customerId) {
+      try {
+        await adminDb.collection('notifications').add({
+          userId: orderData.customerId,
+          title: `Shipment Update: #${orderData.orderNumber || orderId.slice(0, 8)}`,
+          message: `Your item has been marked as "${fulfillmentStatus}".${
+            trackingNumber ? ` Tracking #${trackingNumber} via ${carrier || 'Courier'}.` : ''
+          }`,
+          type: 'order',
+          link: `/account/orders/${orderId}`,
+          read: false,
+          createdAt: now,
+        });
+      } catch (notifErr) {
+        console.warn('Failed creating customer fulfillment notification:', notifErr);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Fulfillment and tracking details updated',

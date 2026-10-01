@@ -11,6 +11,7 @@ import {
   ShoppingBag,
   MapPin,
   Heart,
+  Bell,
   Store,
   Shield,
   LogOut,
@@ -42,6 +43,7 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
     { label: 'Order History', href: '/account/orders', icon: ShoppingBag },
     { label: 'Saved Addresses', href: '/account/addresses', icon: MapPin },
     { label: 'Wishlist', href: '/account/wishlist', icon: Heart },
+    { label: 'Notifications', href: '/account/notifications', icon: Bell },
   ];
 
   return (
