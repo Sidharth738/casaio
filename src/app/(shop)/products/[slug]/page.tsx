@@ -8,6 +8,7 @@ import { Card } from '@/components/ui/Card';
 import { ProductImageGallery } from '@/components/product/ProductImageGallery';
 import { ProductActions } from '@/components/product/ProductActions';
 import { ProductCard } from '@/components/product/ProductCard';
+import { ReviewsSection } from '@/components/review/ReviewsSection';
 import { getProductBySlug, getRelatedProducts } from '@/lib/firebase/firestore';
 import type { Product } from '@/types';
 
@@ -240,66 +241,12 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
           </Card>
         </section>
 
-        {/* Customer Reviews Section Stub (Phase 10 preparation) */}
-        <section className="mt-16 sm:mt-20 pt-12 border-t border-zinc-200/80">
-          <div className="flex flex-col md:flex-row md:items-end justify-between mb-8">
-            <div>
-              <p className="text-xs font-semibold text-amber-700 uppercase tracking-widest">
-                Customer Impressions
-              </p>
-              <h2 className="font-serif text-2xl sm:text-3xl font-bold text-zinc-950 mt-1">
-                Verified Owner Reviews
-              </h2>
-            </div>
-            <div className="mt-3 md:mt-0 flex items-center gap-2 text-sm text-zinc-600">
-              <div className="flex items-center text-amber-500">
-                <Star className="w-4 h-4 fill-amber-500 text-amber-500" />
-              </div>
-              <span className="font-bold text-zinc-900">
-                {product.ratings.average ? product.ratings.average.toFixed(1) : '5.0'}
-              </span>
-              <span>out of 5 based on {product.ratings.count || 12} reviews</span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Card className="p-5 border-zinc-200">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1 text-amber-500">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star key={i} className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-                  ))}
-                </div>
-                <span className="text-[11px] text-zinc-400">Verified Buyer &bull; 2 weeks ago</span>
-              </div>
-              <h4 className="text-xs font-bold text-zinc-900 mb-1">
-                Exceptional texture and build quality
-              </h4>
-              <p className="text-xs text-zinc-600 leading-relaxed">
-                The finish matches the architectural photos exactly. Came securely packaged with protective wooden framing. Very impressed by the dropship handling.
-              </p>
-              <p className="text-[11px] text-zinc-500 mt-3 font-medium">Aarav M. (Bengaluru)</p>
-            </Card>
-
-            <Card className="p-5 border-zinc-200">
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-1 text-amber-500">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <Star key={i} className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
-                  ))}
-                </div>
-                <span className="text-[11px] text-zinc-400">Verified Buyer &bull; 1 month ago</span>
-              </div>
-              <h4 className="text-xs font-bold text-zinc-900 mb-1">
-                Elevated our entire living room
-              </h4>
-              <p className="text-xs text-zinc-600 leading-relaxed">
-                Worth every rupee. The attention to detail on the joints and polish reflects true artisan craftsmanship. Delivery was seamless.
-              </p>
-              <p className="text-[11px] text-zinc-500 mt-3 font-medium">Ananya S. (Mumbai)</p>
-            </Card>
-          </div>
-        </section>
+        {/* Live Customer Reviews Section */}
+        <ReviewsSection
+          productId={product.id}
+          initialRating={product.ratings?.average ?? 5}
+          initialCount={product.ratings?.count ?? 0}
+        />
 
         {/* Related Products Section */}
         {relatedProducts.length > 0 && (

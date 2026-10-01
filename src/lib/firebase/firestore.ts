@@ -604,5 +604,58 @@ export async function deleteCoupon(couponId: string): Promise<void> {
   await deleteDoc(doc(db, 'coupons', couponId));
 }
 
+// ─── Reviews & Ratings ────────────────────────────────────────────────────────
+
+import type { Review } from '@/types';
+
+export async function getProductReviews(productId: string): Promise<Review[]> {
+  try {
+    const q = query(
+      collection(db, 'reviews'),
+      where('productId', '==', productId),
+      where('status', '==', 'published'),
+      orderBy('createdAt', 'desc')
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => docToData<Review>(d));
+  } catch {
+    const fallbackQ = query(
+      collection(db, 'reviews'),
+      where('productId', '==', productId),
+      where('status', '==', 'published')
+    );
+    const snap = await getDocs(fallbackQ);
+    const list = snap.docs.map((d) => docToData<Review>(d));
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+}
+
+export async function getAllReviewsAdmin(): Promise<Review[]> {
+  try {
+    const q = query(collection(db, 'reviews'), orderBy('createdAt', 'desc'));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => docToData<Review>(d));
+  } catch {
+    const snap = await getDocs(collection(db, 'reviews'));
+    const list = snap.docs.map((d) => docToData<Review>(d));
+    return list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }
+}
+
+export async function updateReviewStatus(
+  reviewId: string,
+  status: 'published' | 'hidden' | 'pending'
+): Promise<void> {
+  const rRef = doc(db, 'reviews', reviewId);
+  await updateDoc(rRef, {
+    status,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+export async function deleteReview(reviewId: string): Promise<void> {
+  await deleteDoc(doc(db, 'reviews', reviewId));
+}
+
 
 

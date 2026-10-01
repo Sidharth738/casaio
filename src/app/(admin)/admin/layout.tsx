@@ -19,6 +19,7 @@ import {
   ExternalLink,
   Loader2,
   Lock,
+  MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -83,6 +84,7 @@ export default function AdminPortalLayout({
     { label: 'Categories', href: '/admin/categories', icon: Layers },
     { label: 'Orders', href: '/admin/orders', icon: ShoppingBag },
     { label: 'Coupons', href: '/admin/coupons', icon: Tag },
+    { label: 'Reviews', href: '/admin/reviews', icon: MessageSquare },
     { label: 'Users', href: '/admin/users', icon: Users },
   ];
 

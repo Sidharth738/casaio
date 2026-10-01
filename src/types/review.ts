@@ -1,7 +1,7 @@
 export interface Review {
   id: string;
   productId: string;
-  orderId: string;
+  orderId?: string;
   userId: string;
   userName: string;
   userAvatar?: string;
@@ -14,13 +14,13 @@ export interface Review {
     comment: string;
     respondedAt: string;
   };
-  status: 'published' | 'hidden';
+  status: 'published' | 'hidden' | 'pending';
   createdAt: string;
 }
 
 export interface CreateReviewInput {
   productId: string;
-  orderId: string;
+  orderId?: string;
   rating: number;
   title: string;
   comment: string;

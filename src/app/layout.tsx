@@ -15,8 +15,14 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://casaio.app';
+
 export const metadata: Metadata = {
-  title: 'Casaio | Premium Curated Living & Artisan Dropshipping',
+  metadataBase: new URL(BASE_URL),
+  title: {
+    default: 'Casaio | Premium Curated Living & Artisan Dropshipping',
+    template: '%s | Casaio',
+  },
   description:
     'Discover curated luxury furniture, architectural lighting, and artisanal home decor directly from certified dropship creators and workshops.',
   keywords: [
@@ -26,13 +32,35 @@ export const metadata: Metadata = {
     'dropshipping',
     'artisan lighting',
     'interior design',
+    'home furnishing India',
+    'premium homeware',
   ],
-  authors: [{ name: 'Casaio' }],
+  authors: [{ name: 'Casaio', url: BASE_URL }],
+  creator: 'Casaio',
+  publisher: 'Casaio',
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-snippet': -1,
+      'max-image-preview': 'large',
+    },
+  },
   openGraph: {
     title: 'Casaio | Premium Curated Living',
     description: 'Elevate your sanctuary with timeless home furnishings and decor.',
+    url: BASE_URL,
+    siteName: 'Casaio',
     type: 'website',
     locale: 'en_IN',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Casaio | Premium Curated Living',
+    description: 'Elevate your sanctuary with timeless home furnishings and decor.',
+    creator: '@casaio',
   },
 };
 
