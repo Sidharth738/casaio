@@ -9,6 +9,11 @@
     "lint": "eslint",
     "seed": "tsx src/scripts/seed.ts"
   },
+  "overrides": {
+    "jwks-rsa": {
+      "jose": "4.15.9"
+    }
+  },
   "dependencies": {
     "clsx": "^2.1.1",
     "firebase": "^12.19.0",
