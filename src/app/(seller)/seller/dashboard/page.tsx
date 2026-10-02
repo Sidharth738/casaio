@@ -83,7 +83,7 @@ export default function SellerDashboardPage() {
   if (loading) {
     return (
       <div className="py-24 flex flex-col items-center justify-center text-zinc-400">
-        <Loader2 className="w-8 h-8 animate-spin mb-3 text-amber-600" />
+        <Loader2 className="w-8 h-8 animate-spin mb-3 text-orange-600" />
         <p className="text-xs">Loading seller command metrics...</p>
       </div>
     );
@@ -135,7 +135,7 @@ export default function SellerDashboardPage() {
                 {orders.length} orders total
               </span>
             </div>
-            <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
               <TrendingUp className="w-6 h-6" />
             </div>
           </CardContent>
@@ -166,14 +166,14 @@ export default function SellerDashboardPage() {
               <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
                 Pending Shipments
               </p>
-              <h3 className="font-serif text-2xl font-bold text-amber-700 mt-1">
+              <h3 className="font-serif text-2xl font-bold text-orange-700 mt-1">
                 {pendingShipmentsCount}
               </h3>
               <span className="text-[11px] text-zinc-400 mt-0.5 block">
                 Requires courier packing
               </span>
             </div>
-            <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-orange-50 text-orange-700 flex items-center justify-center">
               <Clock className="w-6 h-6" />
             </div>
           </CardContent>
@@ -232,7 +232,7 @@ export default function SellerDashboardPage() {
                       <div className="flex items-center gap-2">
                         <Link
                           href={`/seller/orders/${o.id}`}
-                          className="font-mono font-bold text-xs text-zinc-900 hover:text-amber-700 transition-colors"
+                          className="font-mono font-bold text-xs text-zinc-900 hover:text-orange-700 transition-colors"
                         >
                           {o.orderNumber}
                         </Link>
@@ -251,7 +251,7 @@ export default function SellerDashboardPage() {
                       </span>
                       <Link
                         href={`/seller/orders/${o.id}`}
-                        className="text-[11px] text-amber-700 hover:underline font-medium"
+                        className="text-[11px] text-orange-700 hover:underline font-medium"
                       >
                         Dispatch →
                       </Link>
@@ -269,7 +269,7 @@ export default function SellerDashboardPage() {
           <div className="bg-white rounded-2xl border border-zinc-200/80 p-6 shadow-xs space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <AlertTriangle className="w-4 h-4 text-orange-600" />
                 <h3 className="font-serif font-bold text-sm text-zinc-950">
                   Inventory Alerts
                 </h3>

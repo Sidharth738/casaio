@@ -72,6 +72,7 @@ export default function ProductsClientPage() {
     const filters: ProductFilterParams = {
       category: currentCategory || undefined,
       sortBy: currentSort,
+      searchQuery: currentSearch || undefined,
       minPrice,
       maxPrice,
       inStockOnly,
@@ -93,7 +94,7 @@ export default function ProductsClientPage() {
     return () => {
       isMounted = false;
     };
-  }, [currentCategory, currentSort, minPrice, maxPrice, inStockOnly]);
+  }, [currentCategory, currentSort, currentSearch, minPrice, maxPrice, inStockOnly]);
 
   function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -123,7 +124,7 @@ export default function ProductsClientPage() {
       <Container>
         {/* Page Header */}
         <div className="mb-8">
-          <p className="text-xs font-semibold text-amber-700 uppercase tracking-widest">All Collections</p>
+          <p className="text-xs font-semibold text-orange-700 uppercase tracking-widest">All Collections</p>
           <h1 className="font-serif text-3xl sm:text-4xl font-bold text-zinc-950 mt-1">Our Catalogue</h1>
         </div>
 
@@ -137,7 +138,7 @@ export default function ProductsClientPage() {
               value={localSearch}
               onChange={(e) => setLocalSearch(e.target.value)}
               placeholder="Search products…"
-              className="w-full pl-9 pr-4 py-2.5 text-sm border border-zinc-200 rounded-lg bg-white text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              className="w-full pl-9 pr-4 py-2.5 text-sm border border-zinc-200 rounded-lg bg-white text-zinc-800 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-orange-500"
             />
           </form>
 
@@ -145,7 +146,7 @@ export default function ProductsClientPage() {
           <select
             value={currentSort}
             onChange={(e) => updateUrl({ sort: e.target.value })}
-            className="text-sm border border-zinc-200 rounded-lg px-3 py-2.5 bg-white text-zinc-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            className="text-sm border border-zinc-200 rounded-lg px-3 py-2.5 bg-white text-zinc-800 focus:outline-none focus:ring-2 focus:ring-orange-500"
           >
             {SORT_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -160,21 +161,21 @@ export default function ProductsClientPage() {
             onClick={() => setFiltersOpen((v) => !v)}
             className="whitespace-nowrap"
           >
-            Filters {hasActiveFilters && <span className="ml-1.5 w-2 h-2 rounded-full bg-amber-500 inline-block" />}
+            Filters {hasActiveFilters && <span className="ml-1.5 w-2 h-2 rounded-full bg-orange-500 inline-block" />}
           </Button>
         </div>
 
-        <div className="flex gap-8">
+        <div className="flex flex-col md:flex-row gap-6 md:gap-8">
           {/* Sidebar Filters */}
           {filtersOpen && (
-            <aside className="w-56 shrink-0 space-y-6 hidden md:block">
+            <aside className="w-full md:w-56 md:shrink-0 space-y-6 rounded-xl border border-zinc-200 bg-white p-4 md:border-0 md:bg-transparent md:p-0">
               {/* Category filter */}
               <div>
                 <p className="text-xs font-semibold text-zinc-700 uppercase tracking-widest mb-2">Category</p>
                 <div className="space-y-1">
                   <button
                     onClick={() => updateUrl({ category: undefined })}
-                    className={`block w-full text-left text-sm px-2 py-1.5 rounded-lg transition-colors ${!currentCategory ? 'bg-amber-50 text-amber-800 font-medium' : 'text-zinc-600 hover:bg-zinc-50'}`}
+                    className={`block w-full text-left text-sm px-2 py-1.5 rounded-lg transition-colors ${!currentCategory ? 'bg-orange-50 text-orange-800 font-medium' : 'text-zinc-600 hover:bg-zinc-50'}`}
                   >
                     All
                   </button>
@@ -182,7 +183,7 @@ export default function ProductsClientPage() {
                     <button
                       key={cat.id}
                       onClick={() => updateUrl({ category: cat.slug })}
-                      className={`block w-full text-left text-sm px-2 py-1.5 rounded-lg transition-colors ${currentCategory === cat.slug ? 'bg-amber-50 text-amber-800 font-medium' : 'text-zinc-600 hover:bg-zinc-50'}`}
+                      className={`block w-full text-left text-sm px-2 py-1.5 rounded-lg transition-colors ${currentCategory === cat.slug ? 'bg-orange-50 text-orange-800 font-medium' : 'text-zinc-600 hover:bg-zinc-50'}`}
                     >
                       {cat.name}
                     </button>
@@ -200,7 +201,7 @@ export default function ProductsClientPage() {
                     value={localMin}
                     onChange={(e) => setLocalMin(e.target.value)}
                     min={0}
-                    className="w-full text-sm border border-zinc-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    className="w-full text-sm border border-zinc-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
                   <span className="text-zinc-400 text-xs">–</span>
                   <input
@@ -209,7 +210,7 @@ export default function ProductsClientPage() {
                     value={localMax}
                     onChange={(e) => setLocalMax(e.target.value)}
                     min={0}
-                    className="w-full text-sm border border-zinc-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    className="w-full text-sm border border-zinc-200 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
                   />
                 </div>
                 {(minPrice || maxPrice) && (
@@ -226,7 +227,7 @@ export default function ProductsClientPage() {
                     type="checkbox"
                     checked={inStockOnly}
                     onChange={(e) => updateUrl({ inStock: e.target.checked ? '1' : undefined })}
-                    className="rounded border-zinc-300 text-amber-600 focus:ring-amber-500"
+                    className="rounded border-zinc-300 text-orange-600 focus:ring-orange-500"
                   />
                   <span className="text-sm text-zinc-700">In Stock Only</span>
                 </label>
@@ -249,9 +250,9 @@ export default function ProductsClientPage() {
             {hasActiveFilters && (
               <div className="flex flex-wrap gap-2 mb-4">
                 {currentCategory && (
-                  <span className="inline-flex items-center gap-1 text-xs bg-amber-50 text-amber-800 border border-amber-200 rounded-full px-2.5 py-1">
+                  <span className="inline-flex items-center gap-1 text-xs bg-orange-50 text-orange-800 border border-orange-200 rounded-full px-2.5 py-1">
                     {categories.find((c) => c.slug === currentCategory)?.name ?? currentCategory}
-                    <button onClick={() => updateUrl({ category: undefined })} className="ml-0.5 hover:text-amber-900"><X className="w-3 h-3" /></button>
+                    <button onClick={() => updateUrl({ category: undefined })} className="ml-0.5 hover:text-orange-900"><X className="w-3 h-3" /></button>
                   </span>
                 )}
                 {inStockOnly && (

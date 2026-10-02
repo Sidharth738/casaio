@@ -152,7 +152,7 @@ export function ProductActions({ product }: ProductActionsProps) {
                   }}
                   className={`px-3.5 py-2 rounded-lg text-xs font-medium border transition-all ${
                     isSelected
-                      ? 'border-amber-600 bg-amber-50/80 text-amber-900 ring-2 ring-amber-500/20 shadow-xs'
+                      ? 'border-orange-600 bg-orange-50/80 text-orange-900 ring-2 ring-orange-500/20 shadow-xs'
                       : isVariantOos
                       ? 'border-zinc-200 bg-zinc-100 text-zinc-400 line-through cursor-not-allowed'
                       : 'border-zinc-200 bg-white text-zinc-700 hover:border-zinc-400'
@@ -249,7 +249,7 @@ export function ProductActions({ product }: ProductActionsProps) {
       {/* Trust & Guarantee Badges */}
       <div className="pt-4 border-t border-zinc-200/80 space-y-3">
         <div className="flex items-start gap-3">
-          <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <ShieldCheck className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
           <div>
             <p className="text-xs font-semibold text-zinc-900">Casaio Verified Artisan Guarantee</p>
             <p className="text-[11px] text-zinc-500">Every consignment is inspected for finish quality and authentic materials prior to dispatch.</p>
@@ -257,7 +257,7 @@ export function ProductActions({ product }: ProductActionsProps) {
         </div>
 
         <div className="flex items-start gap-3">
-          <Truck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <Truck className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
           <div>
             <p className="text-xs font-semibold text-zinc-900">White Glove Dropship Delivery</p>
             <p className="text-[11px] text-zinc-500">Dispatched directly from the maker&apos;s workshop. Free door-to-door transit insurance included.</p>
@@ -265,7 +265,7 @@ export function ProductActions({ product }: ProductActionsProps) {
         </div>
 
         <div className="flex items-start gap-3">
-          <RefreshCw className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <RefreshCw className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
           <div>
             <p className="text-xs font-semibold text-zinc-900">7-Day Return Window</p>
             <p className="text-[11px] text-zinc-500">No questions asked return pickup if damaged or not matching description.</p>

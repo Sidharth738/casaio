@@ -8,6 +8,26 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Resolves supported image links and rejects page URLs that Next Image cannot render. */
+export function getRenderableImageUrl(value?: string): string | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:') return null;
+
+    if (url.hostname === 'unsplash.com' && url.pathname.includes('KSfe2Z4REEM')) {
+      return 'https://images.unsplash.com/photo-1615873968403-89e068629265?auto=format&fit=crop&w=1200&q=80';
+    }
+
+    if (!['images.unsplash.com', 'firebasestorage.googleapis.com'].includes(url.hostname)) {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Formats a numeric amount to Indian Rupee (INR) currency format (e.g. ₹1,299).
  */

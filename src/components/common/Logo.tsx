@@ -1,4 +1,5 @@
 import React from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
@@ -15,51 +16,36 @@ export const Logo: React.FC<LogoProps> = ({
   showSubtitle = false,
   linkToHome = true,
 }) => {
-  const sizeClasses = {
-    sm: 'text-lg tracking-wider',
-    md: 'text-2xl tracking-widest',
-    lg: 'text-3xl tracking-widest',
-  };
-
-  const markSizeClasses = {
-    sm: 'w-6 h-6 text-xs',
-    md: 'w-8 h-8 text-sm',
-    lg: 'w-10 h-10 text-base',
+  const imageSizeClasses = {
+    sm: 'h-9 w-24',
+    md: 'h-10 w-24 sm:h-12 sm:w-[8.5rem]',
+    lg: 'h-[4.5rem] w-52',
   };
 
   const content = (
-    <div className={cn('inline-flex items-center gap-2.5 select-none group', className)}>
-      {/* Brand Monogram Mark */}
-      <div
+    <span className={cn('inline-flex flex-col items-center select-none group', className)}>
+      <Image
+        src="/casaio-logo.png"
+        alt="Casaio"
+        width={564}
+        height={442}
+        draggable={false}
         className={cn(
-          'flex items-center justify-center font-serif font-bold rounded bg-zinc-900 text-amber-500 shadow-sm border border-zinc-800 transition-transform duration-200 group-hover:scale-105',
-          markSizeClasses[size]
+          'object-cover object-center transition-transform duration-200 group-hover:scale-[1.02]',
+          imageSizeClasses[size]
         )}
-      >
-        <span>C</span>
-      </div>
-
-      <div className="flex flex-col">
-        <span
-          className={cn(
-            'font-serif font-bold uppercase text-zinc-900 leading-none tracking-widest',
-            sizeClasses[size]
-          )}
-        >
-          CASA<span className="text-amber-600">IO</span>
+      />
+      {showSubtitle && (
+        <span className="-mt-0.5 text-[9px] uppercase font-sans tracking-[0.25em] text-zinc-500">
+          Curated Living
         </span>
-        {showSubtitle && (
-          <span className="text-[10px] uppercase font-sans tracking-[0.25em] text-zinc-500 mt-0.5">
-            Curated Living
-          </span>
-        )}
-      </div>
-    </div>
+      )}
+    </span>
   );
 
   if (linkToHome) {
     return (
-      <Link href="/" className="inline-flex focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded">
+      <Link href="/" aria-label="Casaio home" className="inline-flex rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500">
         {content}
       </Link>
     );

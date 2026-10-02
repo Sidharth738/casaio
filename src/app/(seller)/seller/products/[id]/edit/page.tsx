@@ -71,7 +71,7 @@ export default function EditProductPage() {
   if (loading) {
     return (
       <div className="py-24 flex flex-col items-center justify-center text-zinc-400">
-        <Loader2 className="w-8 h-8 animate-spin mb-3 text-amber-600" />
+        <Loader2 className="w-8 h-8 animate-spin mb-3 text-orange-600" />
         <p className="text-xs">Loading product details...</p>
       </div>
     );

@@ -9,7 +9,8 @@ import { ProductImageGallery } from '@/components/product/ProductImageGallery';
 import { ProductActions } from '@/components/product/ProductActions';
 import { ProductCard } from '@/components/product/ProductCard';
 import { ReviewsSection } from '@/components/review/ReviewsSection';
-import { getProductBySlug, getRelatedProducts } from '@/lib/firebase/firestore';
+import { getRelatedProducts } from '@/lib/firebase/firestore';
+import { getActiveProductBySlug } from '@/lib/firebase/server-catalog';
 import type { Product } from '@/types';
 
 interface ProductPageProps {
@@ -20,7 +21,7 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
   const { slug } = await params;
   let product: Product | null = null;
   try {
-    product = await getProductBySlug(slug);
+    product = await getActiveProductBySlug(slug);
   } catch {
     // Graceful fallback during build
   }
@@ -44,14 +45,14 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
   };
 }
 
-export const revalidate = 600; // 10 minutes ISR
+export const revalidate = 60;
 
 export default async function ProductDetailPage({ params }: ProductPageProps) {
   const { slug } = await params;
 
   let product: Product | null = null;
   try {
-    product = await getProductBySlug(slug);
+    product = await getActiveProductBySlug(slug);
   } catch {
     // Firestore error
   }
@@ -102,7 +103,7 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
             {/* Seller & Verification badge */}
             <div className="flex items-center justify-between text-xs">
               <div className="flex items-center gap-1.5 text-zinc-600">
-                <Store className="w-3.5 h-3.5 text-amber-600" />
+                <Store className="w-3.5 h-3.5 text-orange-600" />
                 <span>Curated by</span>
                 <span className="font-semibold text-zinc-900">{product.sellerStoreName}</span>
               </div>
@@ -118,13 +119,13 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
 
             {/* Rating & Review summary */}
             <div className="flex items-center gap-2">
-              <div className="flex items-center text-amber-500">
+              <div className="flex items-center text-orange-500">
                 {Array.from({ length: 5 }).map((_, i) => (
                   <Star
                     key={i}
                     className={`w-4 h-4 ${
                       i < Math.floor(product.ratings.average || 5)
-                        ? 'fill-amber-500 text-amber-500'
+                        ? 'fill-orange-500 text-orange-500'
                         : 'text-zinc-300'
                     }`}
                   />
@@ -211,7 +212,7 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
           <Card className="p-6 sm:p-8 bg-[#F5F2EB]/60 border-zinc-200/80">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-full bg-amber-600/10 border border-amber-600/20 flex items-center justify-center text-amber-700">
+                <div className="w-12 h-12 rounded-full bg-orange-600/10 border border-orange-600/20 flex items-center justify-center text-orange-700">
                   <Store className="w-6 h-6" />
                 </div>
                 <div>
@@ -253,7 +254,7 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
           <section className="mt-16 sm:mt-24 pt-12 border-t border-zinc-200/80">
             <div className="flex items-center justify-between mb-8">
               <div>
-                <p className="text-xs font-semibold text-amber-700 uppercase tracking-widest">
+                <p className="text-xs font-semibold text-orange-700 uppercase tracking-widest">
                   Complementary Creations
                 </p>
                 <h2 className="font-serif text-2xl sm:text-3xl font-bold text-zinc-950 mt-1">
@@ -262,7 +263,7 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
               </div>
               <Link
                 href={`/categories/${product.categorySlug}`}
-                className="text-xs font-semibold text-zinc-800 hover:text-amber-700 flex items-center gap-1"
+                className="text-xs font-semibold text-zinc-800 hover:text-orange-700 flex items-center gap-1"
               >
                 <span>View Full Sanctuary</span>
                 <ChevronRight className="w-3.5 h-3.5" />

@@ -7,6 +7,7 @@ import { Logo } from '@/components/common/Logo';
 import { useAuth } from '@/hooks/useAuth';
 import { useCart } from '@/hooks/useCart';
 import { useWishlist } from '@/hooks/useWishlist';
+import { getCategories } from '@/lib/firebase/firestore';
 import { Badge } from '@/components/ui/Badge';
 import { NotificationBell } from '@/components/layout/NotificationBell';
 import {
@@ -46,14 +47,28 @@ export const StoreHeader: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const navCategories = [
+  const [navCategories, setNavCategories] = useState([
     { name: 'All Products', href: '/products' },
     { name: 'Living Room', href: '/categories/living-room' },
     { name: 'Lighting', href: '/categories/lighting' },
     { name: 'Decor & Accents', href: '/categories/decor' },
     { name: 'Kitchen & Dining', href: '/categories/kitchen' },
     { name: 'Bed & Bath', href: '/categories/bed-bath' },
-  ];
+  ]);
+
+  useEffect(() => {
+    getCategories()
+      .then((categories) => {
+        setNavCategories([
+          { name: 'All Products', href: '/products' },
+          ...categories.map((category) => ({
+            name: category.name,
+            href: `/categories/${category.slug}`,
+          })),
+        ]);
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,13 +87,13 @@ export const StoreHeader: React.FC = () => {
   return (
     <header className="sticky top-0 z-40 w-full bg-white/95 backdrop-blur-md border-b border-zinc-200/80 transition-shadow duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20 gap-4">
+        <div className="flex items-center justify-between h-16 sm:h-20 gap-1.5 sm:gap-4">
           
           {/* Mobile menu trigger */}
           <div className="flex items-center lg:hidden">
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="p-2 -ml-2 text-zinc-700 hover:text-zinc-900 rounded-md hover:bg-zinc-100 focus:outline-none"
+              className="p-1.5 sm:p-2 -ml-1 sm:-ml-2 text-zinc-700 hover:text-zinc-900 rounded-md hover:bg-zinc-100 focus:outline-none shrink-0"
               aria-label="Toggle navigation menu"
             >
               {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -98,18 +113,18 @@ export const StoreHeader: React.FC = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search luxury furnishings, rugs, lighting..."
-                className="w-full pl-10 pr-4 py-2 text-sm bg-zinc-50 border border-zinc-200 rounded-full focus:outline-none focus:border-amber-600 focus:bg-white focus:ring-1 focus:ring-amber-600 transition-all text-zinc-900 placeholder:text-zinc-400"
+                className="w-full pl-10 pr-4 py-2 text-sm bg-zinc-50 border border-zinc-200 rounded-full focus:outline-none focus:border-orange-600 focus:bg-white focus:ring-1 focus:ring-orange-600 transition-all text-zinc-900 placeholder:text-zinc-400"
               />
               <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-zinc-400 pointer-events-none" />
             </form>
           </div>
 
           {/* Right Action Icons */}
-          <div className="flex items-center gap-1.5 sm:gap-3">
+          <div className="flex items-center gap-0.5 sm:gap-3 shrink-0">
             {/* Mobile Search Toggle */}
             <button
               onClick={() => setIsSearchOpen(!isSearchOpen)}
-              className="md:hidden p-2 text-zinc-700 hover:text-zinc-900 rounded-full hover:bg-zinc-100"
+              className="md:hidden p-1.5 sm:p-2 text-zinc-700 hover:text-zinc-900 rounded-full hover:bg-zinc-100"
               aria-label="Search products"
             >
               <Search className="w-5 h-5" />
@@ -120,14 +135,14 @@ export const StoreHeader: React.FC = () => {
               href="/seller/dashboard"
               className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:text-zinc-900 border border-zinc-200 rounded-md hover:bg-zinc-50 transition-colors"
             >
-              <Store className="w-3.5 h-3.5 text-amber-600" />
+              <Store className="w-3.5 h-3.5 text-orange-600" />
               <span>Seller Hub</span>
             </Link>
 
             {/* Wishlist */}
             <Link
               href="/account/wishlist"
-              className="p-2 text-zinc-700 hover:text-zinc-900 rounded-full hover:bg-zinc-100 relative transition-colors"
+              className="hidden sm:flex p-2 text-zinc-700 hover:text-zinc-900 rounded-full hover:bg-zinc-100 relative transition-colors"
               aria-label="Saved items wishlist"
             >
               <Heart className="w-5 h-5" />
@@ -139,7 +154,7 @@ export const StoreHeader: React.FC = () => {
             </Link>
 
             {/* In-App Notifications */}
-            <NotificationBell />
+            <div className="hidden sm:block"><NotificationBell /></div>
 
             {/* Auth / Account Dropdown */}
             {isAuthenticated && user ? (
@@ -148,7 +163,7 @@ export const StoreHeader: React.FC = () => {
                   onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                   className="flex items-center gap-2 p-1 pl-2 pr-2.5 rounded-full border border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50 transition-all text-zinc-800"
                 >
-                  <div className="w-6 h-6 rounded-full bg-zinc-900 text-amber-400 font-serif font-bold text-xs flex items-center justify-center">
+                  <div className="w-6 h-6 rounded-full bg-zinc-900 text-orange-400 font-serif font-bold text-xs flex items-center justify-center">
                     {user.displayName ? user.displayName.charAt(0).toUpperCase() : 'U'}
                   </div>
                   <span className="hidden sm:inline text-xs font-semibold max-w-[80px] truncate">
@@ -191,7 +206,7 @@ export const StoreHeader: React.FC = () => {
                         <Link
                           href="/seller/dashboard"
                           onClick={() => setIsUserMenuOpen(false)}
-                          className="flex items-center gap-2 px-4 py-2 text-amber-700 hover:bg-amber-50"
+                          className="flex items-center gap-2 px-4 py-2 text-orange-700 hover:bg-orange-50"
                         >
                           <Store className="w-4 h-4" />
                           <span>Seller Dashboard</span>
@@ -204,7 +219,7 @@ export const StoreHeader: React.FC = () => {
                           onClick={() => setIsUserMenuOpen(false)}
                           className="flex items-center gap-2 px-4 py-2 text-zinc-900 font-semibold hover:bg-zinc-50"
                         >
-                          <Shield className="w-4 h-4 text-amber-600" />
+                          <Shield className="w-4 h-4 text-orange-600" />
                           <span>Admin Portal</span>
                         </Link>
                       )}
@@ -225,7 +240,7 @@ export const StoreHeader: React.FC = () => {
             ) : (
               <Link
                 href="/login"
-                className="flex items-center gap-1.5 p-2 sm:px-3 sm:py-1.5 text-zinc-700 hover:text-zinc-900 rounded-full hover:bg-zinc-100 transition-colors"
+                className="flex items-center gap-1 p-1.5 sm:px-3 sm:py-1.5 text-zinc-700 hover:text-zinc-900 rounded-full hover:bg-zinc-100 transition-colors"
                 aria-label="User sign in"
               >
                 <UserIcon className="w-5 h-5 sm:w-4 sm:h-4 text-zinc-600" />
@@ -236,12 +251,12 @@ export const StoreHeader: React.FC = () => {
             {/* Shopping Cart Drawer Trigger */}
             <button
               onClick={openCart}
-              className="flex items-center gap-2 p-2 sm:px-3 sm:py-2 text-zinc-900 bg-zinc-900 hover:bg-zinc-800 text-white rounded-full transition-colors relative shadow-xs"
+              className="flex items-center gap-1 sm:gap-2 p-1.5 sm:px-3 sm:py-2 text-zinc-900 bg-zinc-900 hover:bg-zinc-800 text-white rounded-full transition-colors relative shadow-xs"
               aria-label="Open Shopping Bag"
             >
-              <ShoppingBag className="w-4 h-4 sm:w-4 sm:h-4 text-amber-400" />
+              <ShoppingBag className="w-4 h-4 sm:w-4 sm:h-4 text-orange-400" />
               <span className="hidden sm:inline text-xs font-medium tracking-wide">Cart</span>
-              <span className="bg-amber-500 text-zinc-950 text-[11px] font-bold rounded-full w-5 h-5 flex items-center justify-center -ml-1 sm:ml-0">
+              <span className="bg-orange-500 text-zinc-950 text-[10px] sm:text-[11px] font-bold rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center -ml-1 sm:ml-0">
                 {cartCount}
               </span>
             </button>
@@ -258,7 +273,7 @@ export const StoreHeader: React.FC = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search products..."
-                className="w-full pl-10 pr-4 py-2 text-sm bg-zinc-50 border border-zinc-200 rounded-full focus:outline-none focus:border-amber-600 focus:bg-white"
+                className="w-full pl-10 pr-4 py-2 text-sm bg-zinc-50 border border-zinc-200 rounded-full focus:outline-none focus:border-orange-600 focus:bg-white"
               />
               <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-zinc-400 pointer-events-none" />
             </form>
@@ -267,18 +282,18 @@ export const StoreHeader: React.FC = () => {
 
         {/* Desktop Category Navigation */}
         <nav className="hidden lg:flex items-center justify-center space-x-8 py-2.5 border-t border-zinc-100 text-xs font-medium tracking-wide uppercase text-zinc-600">
-          {navCategories.map((cat) => (
+          {navCategories.slice(0, 6).map((cat) => (
             <Link
               key={cat.href}
               href={cat.href}
-              className="hover:text-amber-600 transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-0.5 after:bg-amber-600 hover:after:w-full after:transition-all"
+              className="hover:text-orange-600 transition-colors py-1 relative after:absolute after:bottom-0 after:left-0 after:w-0 after:h-0.5 after:bg-orange-600 hover:after:w-full after:transition-all"
             >
               {cat.name}
             </Link>
           ))}
           <Link
             href="/products?isFeatured=true"
-            className="text-amber-700 font-semibold hover:text-amber-800 transition-colors py-1"
+            className="text-orange-700 font-semibold hover:text-orange-800 transition-colors py-1"
           >
             Curator&apos;s Choice
           </Link>
@@ -319,6 +334,20 @@ export const StoreHeader: React.FC = () => {
                 >
                   My Orders & Tracking
                 </Link>
+                <Link
+                  href="/account/wishlist"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="block px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 rounded-md"
+                >
+                  Saved Items
+                </Link>
+                <Link
+                  href="/account/notifications"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="block px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50 rounded-md"
+                >
+                  Notifications
+                </Link>
                 <button
                   onClick={handleSignOut}
                   className="w-full text-left block px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-md"
@@ -339,7 +368,7 @@ export const StoreHeader: React.FC = () => {
             <Link
               href="/seller/dashboard"
               onClick={() => setIsMobileMenuOpen(false)}
-              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-50 rounded-md"
+              className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-orange-700 hover:bg-orange-50 rounded-md"
             >
               <Store className="w-4 h-4" />
               <span>Seller Hub & Registration</span>

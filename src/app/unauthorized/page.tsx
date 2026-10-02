@@ -17,7 +17,7 @@ function UnauthorizedContent() {
     <div className="min-h-[70vh] flex items-center justify-center py-16">
       <Container size="sm">
         <div className="bg-white p-8 sm:p-12 rounded-2xl border border-zinc-200 shadow-xl text-center space-y-6">
-          <div className="w-16 h-16 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+          <div className="w-16 h-16 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center mx-auto border border-orange-200">
             <ShieldAlert className="w-8 h-8" />
           </div>
 
@@ -72,7 +72,7 @@ export default function UnauthorizedPage() {
     <Suspense
       fallback={
         <div className="min-h-[70vh] flex items-center justify-center">
-          <Loader2 className="w-6 h-6 animate-spin text-amber-600" />
+          <Loader2 className="w-6 h-6 animate-spin text-orange-600" />
         </div>
       }
     >

@@ -69,7 +69,7 @@ export function ProductImageGallery({ images, title }: Props) {
               onClick={() => setCurrent(idx)}
               className={cn(
                 'relative w-16 h-16 shrink-0 rounded-lg overflow-hidden border-2 transition-all',
-                idx === current ? 'border-amber-500' : 'border-zinc-200 hover:border-zinc-400'
+                idx === current ? 'border-orange-500' : 'border-zinc-200 hover:border-zinc-400'
               )}
               aria-label={`View image ${idx + 1}`}
             >

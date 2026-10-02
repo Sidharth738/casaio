@@ -13,10 +13,11 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import type { Category } from '@/types';
-import { getCategories, saveCategory, deleteCategory } from '@/lib/firebase/firestore';
+import { getCategories } from '@/lib/firebase/firestore';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
+import { getRenderableImageUrl } from '@/lib/utils';
 
 export default function AdminCategoriesPage() {
   const { user } = useAuth();
@@ -84,17 +85,21 @@ export default function AdminCategoriesPage() {
     try {
       setIsSaving(true);
       setError(null);
-      await saveCategory(
-        {
+      const response = await fetch('/api/admin/categories', {
+        method: currentId ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: currentId,
           name: name.trim(),
           slug: slug.trim(),
           description: description.trim(),
-          imageUrl: imageUrl.trim() || undefined,
-          sortOrder: parseInt(sortOrder) || 1,
+          imageUrl: imageUrl.trim(),
+          sortOrder: Number.parseInt(sortOrder, 10) || 1,
           isActive,
-        },
-        currentId || undefined
-      );
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to save category');
 
       setIsEditing(false);
       fetchCats();
@@ -109,7 +114,8 @@ export default function AdminCategoriesPage() {
   const handleDelete = async (id: string) => {
     if (!confirm('Are you sure you want to delete this category?')) return;
     try {
-      await deleteCategory(id);
+      const response = await fetch(`/api/admin/categories?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Failed to delete category');
       setCategories((prev) => prev.filter((c) => c.id !== id));
     } catch {
       alert('Failed to delete category.');
@@ -153,7 +159,7 @@ export default function AdminCategoriesPage() {
             placeholder="Search categories by name or slug..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-zinc-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+            className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-zinc-200 focus:outline-none focus:ring-1 focus:ring-orange-500"
           />
         </div>
       </div>
@@ -273,7 +279,7 @@ export default function AdminCategoriesPage() {
       {/* Categories Grid */}
       {loading ? (
         <div className="py-20 flex flex-col items-center justify-center text-zinc-400">
-          <Loader2 className="w-8 h-8 animate-spin mb-3 text-amber-600" />
+          <Loader2 className="w-8 h-8 animate-spin mb-3 text-orange-600" />
           <p className="text-xs">Loading category list...</p>
         </div>
       ) : filteredCategories.length === 0 ? (
@@ -297,9 +303,9 @@ export default function AdminCategoriesPage() {
             >
               <div>
                 <div className="relative aspect-16/9 bg-zinc-100">
-                  {cat.imageUrl ? (
+                  {getRenderableImageUrl(cat.imageUrl) ? (
                     <Image
-                      src={cat.imageUrl}
+                      src={getRenderableImageUrl(cat.imageUrl)!}
                       alt={cat.name}
                       fill
                       sizes="(max-width: 640px) 100vw, 33vw"

@@ -95,7 +95,7 @@ export function ReviewForm({ productId, onSuccess }: ReviewFormProps) {
         <p>Your experience helps other shoppers make informed decisions.</p>
         <a
           href="/login"
-          className="inline-block mt-3 text-xs font-semibold text-amber-700 underline underline-offset-2"
+          className="inline-block mt-3 text-xs font-semibold text-orange-700 underline underline-offset-2"
         >
           Sign in to Casaio
         </a>
@@ -128,12 +128,12 @@ export function ReviewForm({ productId, onSuccess }: ReviewFormProps) {
               onMouseEnter={() => setHoverRating(star)}
               onMouseLeave={() => setHoverRating(0)}
               onClick={() => setRating(star)}
-              className="focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded"
+              className="focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded"
             >
               <svg
                 className={`w-7 h-7 transition-colors ${
                   star <= displayRating
-                    ? 'fill-amber-500 text-amber-500'
+                    ? 'fill-orange-500 text-orange-500'
                     : 'fill-zinc-200 text-zinc-200'
                 }`}
                 viewBox="0 0 24 24"
@@ -144,7 +144,7 @@ export function ReviewForm({ productId, onSuccess }: ReviewFormProps) {
             </button>
           ))}
           {displayRating > 0 && (
-            <span className="ml-2 text-xs font-semibold text-amber-700">
+            <span className="ml-2 text-xs font-semibold text-orange-700">
               {ratingLabels[displayRating]}
             </span>
           )}

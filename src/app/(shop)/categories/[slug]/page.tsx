@@ -5,6 +5,7 @@ import type { Metadata } from 'next';
 import { ChevronRight, Layers } from 'lucide-react';
 import { Container } from '@/components/ui/Container';
 import { ProductCard } from '@/components/product/ProductCard';
+import { CategorySortSelect } from '@/components/product/CategorySortSelect';
 import { getCategoryBySlug, getProducts } from '@/lib/firebase/firestore';
 import type { Product, Category } from '@/types';
 
@@ -31,7 +32,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 // Revalidate product listings every 10 minutes
-export const revalidate = 600;
+export const revalidate = 60;
 
 const SORT_OPTIONS = [
   { label: 'Featured', value: 'featured' },
@@ -118,28 +119,7 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
           </div>
 
           {/* Sort control */}
-          <form method="GET" className="flex items-center gap-2">
-            <label htmlFor="sort" className="text-xs text-zinc-500 whitespace-nowrap">
-              Sort by
-            </label>
-            <select
-              id="sort"
-              name="sort"
-              defaultValue={sortBy}
-              onChange={(e) => {
-                // Server-side sort — form submits via GET
-                const form = e.currentTarget.closest('form') as HTMLFormElement;
-                form.submit();
-              }}
-              className="text-xs border border-zinc-200 rounded-lg px-3 py-2 bg-white text-zinc-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
-            >
-              {SORT_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </form>
+          <CategorySortSelect value={sortBy} />
         </div>
 
         {/* Products grid */}

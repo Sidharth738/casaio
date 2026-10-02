@@ -22,6 +22,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Logo } from '@/components/common/Logo';
 
 export default function AdminPortalLayout({
   children,
@@ -34,7 +35,7 @@ export default function AdminPortalLayout({
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#FAFAF8] flex flex-col items-center justify-center text-zinc-400">
-        <Loader2 className="w-8 h-8 animate-spin text-amber-600 mb-3" />
+        <Loader2 className="w-8 h-8 animate-spin text-orange-600 mb-3" />
         <p className="text-xs">Authenticating administrative credentials...</p>
       </div>
     );
@@ -94,20 +95,17 @@ export default function AdminPortalLayout({
       <header className="bg-zinc-950 text-white border-b border-zinc-800 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Link
-              href="/"
-              className="font-serif text-xl font-bold tracking-tight text-white flex items-center gap-2"
-            >
-              <span>Casaio</span>
-              <span className="text-[10px] font-sans font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-600 text-white">
+            <div className="flex items-center gap-2">
+              <Logo size="sm" className="rounded bg-white px-1" />
+              <span className="text-[10px] font-sans font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-orange-600 text-white">
                 Admin
               </span>
-            </Link>
+            </div>
 
             <span className="text-zinc-700 hidden sm:inline">|</span>
 
             <div className="hidden sm:flex items-center gap-2">
-              <Shield className="w-3.5 h-3.5 text-amber-400" />
+              <Shield className="w-3.5 h-3.5 text-orange-400" />
               <span className="text-xs text-zinc-300 font-mono">
                 {user.email}
               </span>
@@ -145,7 +143,7 @@ export default function AdminPortalLayout({
                     : 'text-zinc-400 hover:text-white hover:bg-zinc-900'
                 )}
               >
-                <Icon className={cn('w-3.5 h-3.5', isActive ? 'text-amber-400' : 'text-zinc-500')} />
+                <Icon className={cn('w-3.5 h-3.5', isActive ? 'text-orange-400' : 'text-zinc-500')} />
                 <span>{item.label}</span>
               </Link>
             );

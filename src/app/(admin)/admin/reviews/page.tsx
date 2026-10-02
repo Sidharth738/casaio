@@ -152,9 +152,9 @@ export default function AdminReviewsPage() {
         <div className="bg-white rounded-xl border border-zinc-200 p-4 shadow-xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Pending</span>
-            <Star className="w-4 h-4 text-amber-500" />
+            <Star className="w-4 h-4 text-orange-500" />
           </div>
-          <div className="text-2xl font-bold font-serif text-amber-700 mt-2">{pendingCount}</div>
+          <div className="text-2xl font-bold font-serif text-orange-700 mt-2">{pendingCount}</div>
         </div>
 
         <div className="bg-white rounded-xl border border-zinc-200 p-4 shadow-xs">
@@ -175,7 +175,7 @@ export default function AdminReviewsPage() {
             placeholder="Search by reviewer name, headline, comment, or product ID..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-zinc-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+            className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-zinc-200 focus:outline-none focus:ring-1 focus:ring-orange-500"
           />
         </div>
 
@@ -184,7 +184,7 @@ export default function AdminReviewsPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-            className="text-xs px-3 py-2 rounded-lg border border-zinc-200 bg-white text-zinc-700 focus:outline-none focus:ring-1 focus:ring-amber-500"
+            className="text-xs px-3 py-2 rounded-lg border border-zinc-200 bg-white text-zinc-700 focus:outline-none focus:ring-1 focus:ring-orange-500"
           >
             <option value="all">All Statuses</option>
             <option value="published">Published</option>
@@ -198,7 +198,7 @@ export default function AdminReviewsPage() {
       <div className="bg-white rounded-xl border border-zinc-200 shadow-xs overflow-hidden">
         {loading ? (
           <div className="p-12 text-center text-zinc-400">
-            <Loader2 className="w-6 h-6 animate-spin mx-auto text-amber-600 mb-2" />
+            <Loader2 className="w-6 h-6 animate-spin mx-auto text-orange-600 mb-2" />
             <p className="text-xs">Loading review registry...</p>
           </div>
         ) : filteredReviews.length === 0 ? (
@@ -246,7 +246,7 @@ export default function AdminReviewsPage() {
                           {Array.from({ length: 5 }).map((_, i) => (
                             <Star
                               key={i}
-                              className={`w-3 h-3 ${i < review.rating ? 'fill-amber-500 text-amber-500' : 'fill-zinc-200 text-zinc-200'}`}
+                              className={`w-3 h-3 ${i < review.rating ? 'fill-orange-500 text-orange-500' : 'fill-zinc-200 text-zinc-200'}`}
                             />
                           ))}
                         </div>
@@ -294,7 +294,7 @@ export default function AdminReviewsPage() {
                               type="button"
                               disabled={isBusy}
                               onClick={() => handleUpdateStatus(review.id, 'hidden')}
-                              className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-600 hover:text-amber-800 disabled:opacity-50"
+                              className="inline-flex items-center gap-1 text-[11px] font-medium text-orange-600 hover:text-orange-800 disabled:opacity-50"
                             >
                               {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <EyeOff className="w-3 h-3" />}
                               Hide

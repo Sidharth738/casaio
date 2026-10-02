@@ -22,9 +22,9 @@ interface AuthContextType {
   role: UserRole;
   isLoading: boolean;
   isAuthenticated: boolean;
-  loginWithEmail: (email: string, pass: string) => Promise<void>;
-  registerWithEmail: (email: string, pass: string, name: string) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
+  loginWithEmail: (email: string, pass: string) => Promise<UserRole>;
+  registerWithEmail: (email: string, pass: string, name: string) => Promise<UserRole>;
+  loginWithGoogle: () => Promise<UserRole>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   refreshSession: () => Promise<void>;
@@ -40,21 +40,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Sync token with server session cookie
   const syncServerSession = useCallback(async (fbUser: User | null) => {
-    try {
-      if (fbUser) {
-        const idToken = await fbUser.getIdToken(true);
-        await fetch('/api/auth/session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idToken }),
-        });
-      } else {
-        await fetch('/api/auth/logout', { method: 'POST' });
+    if (fbUser) {
+      const idToken = await fbUser.getIdToken(true);
+      const response = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || 'Could not establish a secure session. Please try again.');
       }
-    } catch (err) {
-      console.error('Error syncing server session:', err);
+    } else {
+      const response = await fetch('/api/auth/logout', { method: 'POST' });
+      if (!response.ok) throw new Error('Could not end the server session. Please try again.');
     }
   }, []);
+
+  const establishSession = useCallback(async (fbUser: User) => {
+    try {
+      await syncServerSession(fbUser);
+    } catch (error) {
+      setUser(null);
+      setFirebaseUser(null);
+      setRole('customer');
+      await signOut(auth);
+      throw error;
+    }
+  }, [syncServerSession]);
 
   // Fetch or create Firestore user profile
   const fetchUserProfile = useCallback(async (fbUser: User): Promise<UserProfile> => {
@@ -103,7 +116,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setRole(profile.role);
           await syncServerSession(fbUser);
         } catch (error) {
-          console.error('Error loading user profile:', error);
+          // Session service configuration/network failures are recoverable and
+          // should be shown by the login form, not promoted to Next's error overlay.
+          console.warn('Unable to initialize the signed-in session:', error);
           setUser(null);
           setRole('customer');
         }
@@ -111,7 +126,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setFirebaseUser(null);
         setUser(null);
         setRole('customer');
-        await syncServerSession(null);
+        try {
+          await syncServerSession(null);
+        } catch (error) {
+          console.error('Error clearing server session:', error);
+        }
       }
       setIsLoading(false);
     });
@@ -126,13 +145,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const profile = await fetchUserProfile(cred.user);
       setUser(profile);
       setRole(profile.role);
-      await syncServerSession(cred.user);
+      await establishSession(cred.user);
+      return profile.role;
     } finally {
       setIsLoading(false);
     }
   };
 
-  const registerWithEmail = async (email: string, pass: string, displayName: string) => {
+  const registerWithEmail = async (email: string, pass: string, displayName: string): Promise<UserRole> => {
     setIsLoading(true);
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
@@ -152,7 +172,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await setDoc(doc(db, 'users', cred.user.uid), profile);
       setUser(profile);
       setRole('customer');
-      await syncServerSession(cred.user);
+      await establishSession(cred.user);
+      return 'customer';
     } finally {
       setIsLoading(false);
     }
@@ -166,7 +187,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const profile = await fetchUserProfile(cred.user);
       setUser(profile);
       setRole(profile.role);
-      await syncServerSession(cred.user);
+      await establishSession(cred.user);
+      return profile.role;
     } finally {
       setIsLoading(false);
     }

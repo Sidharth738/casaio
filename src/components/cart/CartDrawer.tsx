@@ -38,7 +38,7 @@ export function CartDrawer() {
           {/* Header */}
           <div className="p-5 border-b border-zinc-200/80 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <ShoppingBag className="w-5 h-5 text-amber-700" />
+              <ShoppingBag className="w-5 h-5 text-orange-700" />
               <h2 className="font-serif text-lg font-bold text-zinc-950">
                 Your Shopping Bag ({itemCount})
               </h2>
@@ -56,7 +56,7 @@ export function CartDrawer() {
           <div className="flex-1 overflow-y-auto p-5 space-y-4 divide-y divide-zinc-100">
             {items.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center py-16 space-y-4">
-                <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center text-amber-700">
+                <div className="w-16 h-16 rounded-full bg-orange-50 flex items-center justify-center text-orange-700">
                   <ShoppingBag className="w-8 h-8" />
                 </div>
                 <div>
@@ -100,7 +100,7 @@ export function CartDrawer() {
                           <Link
                             href={`/products/${item.slug}`}
                             onClick={closeCart}
-                            className="font-serif text-sm font-semibold text-zinc-900 hover:text-amber-700 transition-colors line-clamp-1"
+                            className="font-serif text-sm font-semibold text-zinc-900 hover:text-orange-700 transition-colors line-clamp-1"
                           >
                             {item.title}
                           </Link>
@@ -177,7 +177,7 @@ export function CartDrawer() {
                   <span className="text-emerald-700 font-semibold">FREE</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-[11px] text-zinc-500 pt-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
+                  <ShieldCheck className="w-3.5 h-3.5 text-orange-600" />
                   <span>GST inclusive. Multi-point artisan inspection guaranteed.</span>
                 </div>
               </div>

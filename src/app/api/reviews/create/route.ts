@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb, adminAuth } from '@/lib/firebase/admin';
+import { adminDb } from '@/lib/firebase/admin';
 import type { Review } from '@/types';
+import { requireServerUser } from '@/lib/firebase/server-auth';
 
 export async function POST(req: NextRequest) {
   try {
+    const authenticatedUser = await requireServerUser(req);
+    if (!authenticatedUser) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     const body = await req.json();
     const {
       productId,
@@ -11,34 +14,13 @@ export async function POST(req: NextRequest) {
       title,
       comment,
       images = [],
-      userId: bodyUserId,
-      userName: bodyUserName,
-      userAvatar: bodyUserAvatar,
     } = body;
 
-    // 1. Authenticate user from session cookie or payload
-    let userId = bodyUserId;
-    let userName = bodyUserName || 'Customer';
-    let userAvatar = bodyUserAvatar || null;
-
-    const sessionCookie = req.cookies.get('casaio_session')?.value;
-    if (sessionCookie) {
-      try {
-        const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
-        userId = decoded.uid;
-        if (decoded.name) userName = decoded.name;
-        if (decoded.picture) userAvatar = decoded.picture;
-      } catch (authErr) {
-        console.warn('Session verification fallback in review creation:', authErr);
-      }
-    }
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'You must be signed in to submit a review' },
-        { status: 401 }
-      );
-    }
+    const userId = authenticatedUser.uid;
+    const userSnap = await adminDb.collection('users').doc(userId).get();
+    const userProfile = userSnap.data();
+    const userName = userProfile?.displayName || authenticatedUser.email?.split('@')[0] || 'Customer';
+    const userAvatar = userProfile?.photoURL || null;
 
     // 2. Validate input
     if (!productId) {

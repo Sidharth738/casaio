@@ -6,6 +6,7 @@ import { Container } from '@/components/ui/Container';
 import { getCategories } from '@/lib/firebase/firestore';
 import type { Category } from '@/types';
 import { Layers } from 'lucide-react';
+import { getRenderableImageUrl } from '@/lib/utils';
 
 export const metadata: Metadata = {
   title: 'All Categories | Casaio',
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
 };
 
 // Revalidate every 30 minutes — categories change infrequently
-export const revalidate = 1800;
+export const revalidate = 60;
 
 async function CategoriesGrid() {
   let categories: Category[] = [];
@@ -44,9 +45,9 @@ async function CategoriesGrid() {
           href={`/categories/${cat.slug}`}
           className="group relative block aspect-square rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300"
         >
-          {cat.imageUrl ? (
+          {getRenderableImageUrl(cat.imageUrl) ? (
             <Image
-              src={cat.imageUrl}
+              src={getRenderableImageUrl(cat.imageUrl)!}
               alt={cat.name}
               fill
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
@@ -59,7 +60,7 @@ async function CategoriesGrid() {
           )}
           <div className="absolute inset-0 bg-linear-to-t from-black/70 via-black/20 to-transparent" />
           <div className="absolute bottom-5 left-5 right-5">
-            <h2 className="font-serif text-lg font-bold text-white group-hover:text-amber-200 transition-colors leading-snug">
+            <h2 className="font-serif text-lg font-bold text-white group-hover:text-orange-200 transition-colors leading-snug">
               {cat.name}
             </h2>
             {cat.description && (
@@ -78,7 +79,7 @@ export default function CategoriesPage() {
       <Container>
         {/* Page Header */}
         <div className="mb-10">
-          <p className="text-xs font-semibold text-amber-700 uppercase tracking-widest">
+          <p className="text-xs font-semibold text-orange-700 uppercase tracking-widest">
             Curated Collections
           </p>
           <h1 className="font-serif text-3xl sm:text-4xl font-bold text-zinc-950 mt-1">

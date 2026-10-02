@@ -78,7 +78,7 @@ export default function CustomerOrdersPage() {
 
       {loading ? (
         <div className="py-20 flex flex-col items-center justify-center text-zinc-400">
-          <Loader2 className="w-8 h-8 animate-spin mb-2 text-amber-600" />
+          <Loader2 className="w-8 h-8 animate-spin mb-2 text-orange-600" />
           <p className="text-xs">Loading order history...</p>
         </div>
       ) : orders.length === 0 ? (
@@ -162,9 +162,9 @@ export default function CustomerOrdersPage() {
                   >
                     <div className="flex items-center gap-3.5 min-w-0">
                       <div className="relative w-12 h-12 rounded-lg bg-zinc-100 overflow-hidden shrink-0 border border-zinc-200">
-                        {item.imageUrl ? (
+                        {typeof item.imageUrl === 'string' && item.imageUrl.trim() ? (
                           <Image
-                            src={item.imageUrl}
+                            src={item.imageUrl.trim()}
                             alt={item.title}
                             fill
                             sizes="48px"
@@ -179,7 +179,7 @@ export default function CustomerOrdersPage() {
 
                       <div className="min-w-0">
                         <Link href={`/products/${item.slug}`}>
-                          <h4 className="font-medium text-xs text-zinc-900 truncate hover:text-amber-700 transition-colors">
+                          <h4 className="font-medium text-xs text-zinc-900 truncate hover:text-orange-700 transition-colors">
                             {item.title}
                           </h4>
                         </Link>

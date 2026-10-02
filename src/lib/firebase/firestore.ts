@@ -16,10 +16,8 @@ import {
   where,
   orderBy,
   limit,
-  startAfter,
   type QueryDocumentSnapshot,
   type DocumentData,
-  type QueryConstraint,
 } from 'firebase/firestore';
 import { db } from './client';
 import type { Product, Category, ProductFilterParams } from '@/types';
@@ -39,13 +37,12 @@ function docToData<T>(
  * Fetch all active categories ordered by sortOrder.
  */
 export async function getCategories(): Promise<Category[]> {
-  const q = query(
-    collection(db, 'categories'),
-    where('isActive', '==', true),
-    orderBy('sortOrder', 'asc')
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => docToData<Category>(d));
+  // Keep this index-free so new categories remain visible without a composite index.
+  const snap = await getDocs(collection(db, 'categories'));
+  return snap.docs
+    .map((d) => docToData<Category>(d))
+    .filter((category) => category.isActive === true)
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 }
 
 /**
@@ -75,59 +72,41 @@ export async function getProducts(
   filters: ProductFilterParams = {},
   cursor?: QueryDocumentSnapshot<DocumentData>
 ): Promise<ProductPage> {
-  const constraints: QueryConstraint[] = [where('status', '==', 'active')];
-
-  if (filters.category) {
-    constraints.push(where('categorySlug', '==', filters.category));
+  // Apply storefront filters and ordering in memory. This avoids the compound
+  // index requirements that previously made the catalogue silently look empty.
+  const q = query(collection(db, 'products'), where('status', '==', 'active'), limit(500));
+  const snap = await getDocs(q);
+  let products = snap.docs.map((d) => docToData<Product>(d));
+  if (filters.category) products = products.filter((product) => product.categorySlug === filters.category);
+  if (filters.inStockOnly) products = products.filter((product) => product.stock > 0);
+  if (filters.minPrice !== undefined) products = products.filter((product) => product.price >= filters.minPrice!);
+  if (filters.maxPrice !== undefined) products = products.filter((product) => product.price <= filters.maxPrice!);
+  if (filters.searchQuery?.trim()) {
+    const searchTerm = filters.searchQuery.trim().toLowerCase();
+    products = products.filter((product) => product.title.toLowerCase().includes(searchTerm));
   }
 
-  if (filters.inStockOnly) {
-    constraints.push(where('stock', '>', 0));
-  }
-
-  if (filters.minPrice !== undefined) {
-    constraints.push(where('price', '>=', filters.minPrice));
-  }
-
-  if (filters.maxPrice !== undefined) {
-    constraints.push(where('price', '<=', filters.maxPrice));
-  }
-
-  // Sorting
+  const dateValue = (value: string | undefined) => value ? new Date(value).getTime() : 0;
   switch (filters.sortBy) {
-    case 'price_asc':
-      constraints.push(orderBy('price', 'asc'));
-      break;
-    case 'price_desc':
-      constraints.push(orderBy('price', 'desc'));
-      break;
-    case 'rating':
-      constraints.push(orderBy('ratings.average', 'desc'));
-      break;
-    case 'newest':
-      constraints.push(orderBy('createdAt', 'desc'));
-      break;
+    case 'price_asc': products.sort((a, b) => a.price - b.price); break;
+    case 'price_desc': products.sort((a, b) => b.price - a.price); break;
+    case 'rating': products.sort((a, b) => b.ratings.average - a.ratings.average); break;
+    case 'newest': products.sort((a, b) => dateValue(b.createdAt) - dateValue(a.createdAt)); break;
     case 'featured':
     default:
-      constraints.push(orderBy('isFeatured', 'desc'), orderBy('salesCount', 'desc'));
+      products.sort((a, b) => Number(b.isFeatured) - Number(a.isFeatured) || b.salesCount - a.salesCount);
       break;
   }
 
-  if (cursor) {
-    constraints.push(startAfter(cursor));
-  }
-
-  constraints.push(limit(PAGE_SIZE + 1));
-
-  const q = query(collection(db, 'products'), ...constraints);
-  const snap = await getDocs(q);
-
-  const hasMore = snap.docs.length > PAGE_SIZE;
-  const docs = hasMore ? snap.docs.slice(0, PAGE_SIZE) : snap.docs;
+  const cursorIndex = cursor ? products.findIndex((product) => product.id === cursor.id) : -1;
+  const startIndex = cursorIndex >= 0 ? cursorIndex + 1 : 0;
+  const docs = products.slice(startIndex, startIndex + PAGE_SIZE + 1);
+  const hasMore = docs.length > PAGE_SIZE;
+  const pageProducts = hasMore ? docs.slice(0, PAGE_SIZE) : docs;
 
   return {
-    products: docs.map((d) => docToData<Product>(d)),
-    lastDoc: docs.length > 0 ? docs[docs.length - 1] : null,
+    products: pageProducts,
+    lastDoc: pageProducts.length > 0 ? snap.docs.find((d) => d.id === pageProducts[pageProducts.length - 1].id) ?? null : null,
     hasMore,
   };
 }
@@ -139,12 +118,12 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
   const q = query(
     collection(db, 'products'),
     where('slug', '==', slug),
-    where('status', '==', 'active'),
     limit(1)
   );
   const snap = await getDocs(q);
   if (snap.empty) return null;
-  return docToData<Product>(snap.docs[0]);
+  const product = docToData<Product>(snap.docs[0]);
+  return product.status === 'active' ? product : null;
 }
 
 /**
@@ -160,15 +139,8 @@ export async function getProductById(id: string): Promise<Product | null> {
  * Fetch featured products for the homepage (max 8).
  */
 export async function getFeaturedProducts(): Promise<Product[]> {
-  const q = query(
-    collection(db, 'products'),
-    where('status', '==', 'active'),
-    where('isFeatured', '==', true),
-    orderBy('salesCount', 'desc'),
-    limit(8)
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => docToData<Product>(d));
+  const { products } = await getProducts({ sortBy: 'featured' });
+  return products.filter((product) => product.isFeatured).slice(0, 8);
 }
 
 /**
@@ -179,18 +151,8 @@ export async function getRelatedProducts(
   excludeId: string,
   count = 4
 ): Promise<Product[]> {
-  const q = query(
-    collection(db, 'products'),
-    where('status', '==', 'active'),
-    where('categorySlug', '==', categorySlug),
-    orderBy('salesCount', 'desc'),
-    limit(count + 1)
-  );
-  const snap = await getDocs(q);
-  return snap.docs
-    .map((d) => docToData<Product>(d))
-    .filter((p) => p.id !== excludeId)
-    .slice(0, count);
+  const { products } = await getProducts({ category: categorySlug, sortBy: 'featured' });
+  return products.filter((product) => product.id !== excludeId).slice(0, count);
 }
 
 /**
@@ -240,9 +202,14 @@ export async function saveUserAddress(
   addressId?: string
 ): Promise<string> {
   const addressesCol = collection(db, 'addresses');
+  // Optional form fields (especially coordinates) are sometimes undefined.
+  // Firestore rejects undefined values instead of treating them as absent.
+  const addressData = Object.fromEntries(
+    Object.entries(data).filter(([, value]) => value !== undefined)
+  ) as Omit<UserAddress, 'id' | 'userId' | 'createdAt'>;
 
   // If this address is set to default, unset other defaults for this user
-  if (data.isDefault) {
+  if (addressData.isDefault) {
     try {
       const existing = await getUserAddresses(userId);
       const batch = writeBatch(db);
@@ -260,13 +227,13 @@ export async function saveUserAddress(
   if (addressId) {
     const addrRef = doc(db, 'addresses', addressId);
     await updateDoc(addrRef, {
-      ...data,
+      ...addressData,
       updatedAt: new Date().toISOString(),
     });
     return addressId;
   } else {
     const docRef = await addDoc(addressesCol, {
-      ...data,
+      ...addressData,
       userId,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -728,6 +695,3 @@ export async function createNotification(
 export async function deleteNotification(notificationId: string): Promise<void> {
   await deleteDoc(doc(db, 'notifications', notificationId));
 }
-
-
-

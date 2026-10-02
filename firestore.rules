@@ -7,25 +7,29 @@ service cloud.firestore {
     // Core Helper Functions
     // =========================================================================
 
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
-    }
-
     function getUserData() {
       return get(
         /databases/$(database)/documents/users/$(request.auth.uid)
       ).data;
     }
 
-    function hasRole(role) {
-      return isAuthenticated() && (
-        request.auth.token.role == role ||
-        getUserData().role == role
+    function isAuthenticated() {
+      return request.auth != null && (
+        !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
+        getUserData().status != 'suspended'
       );
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasRole(role) {
+      // Firestore profile role is authoritative so stale custom claims cannot
+      // preserve seller/admin access after a role change.
+      return isAuthenticated() &&
+        getUserData().role == role &&
+        getUserData().status != 'suspended';
     }
 
     function isAdmin() {
@@ -68,7 +72,7 @@ service cloud.firestore {
         isAdmin()
       );
 
-      allow create: if isOwner(sellerId);
+      allow create: if isOwner(sellerId) && request.resource.data.status == 'pending';
 
       allow update: if (
         isAdmin() ||
@@ -122,7 +126,13 @@ service cloud.firestore {
         (
           isSeller() &&
           resource.data.sellerId == request.auth.uid &&
-          request.resource.data.sellerId == request.auth.uid
+          request.resource.data.sellerId == request.auth.uid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'title', 'slug', 'description', 'shortDescription', 'price',
+            'compareAtPrice', 'costPerItem', 'sku', 'stock',
+            'lowStockThreshold', 'categoryId', 'categorySlug', 'tags',
+            'images', 'hasVariants', 'status', 'updatedAt'
+          ])
         ) ||
         isAdmin()
       );
@@ -201,13 +211,9 @@ service cloud.firestore {
         request.resource.data.customerId == request.auth.uid
       );
 
-      allow update: if (
-        isAdmin() ||
-        (
-          isSeller() &&
-          resource.data.sellerIds.hasAny([request.auth.uid])
-        )
-      );
+      // Order mutations go through authenticated server routes, which enforce
+      // seller ownership per line item and maintain payment/status integrity.
+      allow update: if false;
 
       allow delete: if isAdmin();
     }
@@ -229,7 +235,13 @@ service cloud.firestore {
       );
 
       allow update: if (
-        isOwner(resource.data.userId) ||
+        (
+          isOwner(resource.data.userId) &&
+          request.resource.data.userId == resource.data.userId &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'title', 'comment', 'images', 'updatedAt'
+          ])
+        ) ||
         isAdmin()
       );
 

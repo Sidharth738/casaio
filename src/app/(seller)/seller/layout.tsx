@@ -18,6 +18,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Logo } from '@/components/common/Logo';
 import { getSellerProfile } from '@/lib/firebase/firestore';
 import type { SellerProfile } from '@/types';
 
@@ -60,7 +61,7 @@ export default function SellerPortalLayout({
   if (authLoading || profileLoading) {
     return (
       <div className="min-h-screen bg-[#FAFAF8] flex flex-col items-center justify-center text-zinc-400">
-        <Loader2 className="w-8 h-8 animate-spin text-amber-600 mb-3" />
+        <Loader2 className="w-8 h-8 animate-spin text-orange-600 mb-3" />
         <p className="text-xs">Authenticating seller portal credentials...</p>
       </div>
     );
@@ -95,8 +96,8 @@ export default function SellerPortalLayout({
     if (sellerProfile?.status === 'pending') {
       return (
         <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center p-4">
-          <div className="max-w-lg w-full bg-white rounded-2xl border border-amber-200 p-8 text-center space-y-4 shadow-xs">
-            <div className="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
+          <div className="max-w-lg w-full bg-white rounded-2xl border border-orange-200 p-8 text-center space-y-4 shadow-xs">
+            <div className="w-14 h-14 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center mx-auto border border-orange-200">
               <Clock className="w-7 h-7" />
             </div>
             <div>
@@ -131,7 +132,7 @@ export default function SellerPortalLayout({
     return (
       <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-2xl border border-zinc-200 p-8 text-center space-y-4 shadow-sm">
-          <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center mx-auto">
+          <div className="w-12 h-12 rounded-full bg-orange-50 text-orange-700 flex items-center justify-center mx-auto">
             <Store className="w-6 h-6" />
           </div>
           <h2 className="font-serif text-2xl font-bold text-zinc-950">Partner with Casaio</h2>
@@ -168,15 +169,12 @@ export default function SellerPortalLayout({
       <header className="bg-white border-b border-zinc-200/80 sticky top-0 z-30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Link
-              href="/"
-              className="font-serif text-xl font-bold tracking-tight text-zinc-950 flex items-center gap-2"
-            >
-              <span>Casaio</span>
-              <span className="text-[10px] font-sans font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-900 text-amber-400">
+            <div className="flex items-center gap-2">
+              <Logo size="sm" showSubtitle={false} />
+              <span className="text-[10px] font-sans font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-900 text-orange-400">
                 Atelier
               </span>
-            </Link>
+            </div>
 
             <span className="text-zinc-300 hidden sm:inline">|</span>
 
@@ -232,7 +230,7 @@ export default function SellerPortalLayout({
                     : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50'
                 )}
               >
-                <Icon className={cn('w-3.5 h-3.5', isActive ? 'text-amber-600' : 'text-zinc-400')} />
+                <Icon className={cn('w-3.5 h-3.5', isActive ? 'text-orange-600' : 'text-zinc-400')} />
                 <span>{item.label}</span>
               </Link>
             );

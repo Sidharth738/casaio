@@ -26,7 +26,15 @@ const CartContext = createContext<CartContextType | undefined>(undefined);
 
 const CART_STORAGE_KEY = 'casaio_guest_cart';
 
-function getInitialCartItems(): CartItem[] {
+function serializeCartItems(items: CartItem[]) {
+  return items.map(({ variantSku, compareAtPrice, ...item }) => ({
+    ...item,
+    ...(variantSku ? { variantSku } : {}),
+    ...(compareAtPrice !== undefined ? { compareAtPrice } : {}),
+  }));
+}
+
+function readStoredCartItems(): CartItem[] {
   if (typeof window === 'undefined') return [];
   try {
     const stored = localStorage.getItem(CART_STORAGE_KEY);
@@ -40,8 +48,15 @@ function getInitialCartItems(): CartItem[] {
 
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [items, setItems] = useState<CartItem[]>(getInitialCartItems);
+  const [items, setItems] = useState<CartItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
+
+  // Read browser storage after the first render so the SSR markup and the
+  // browser's hydration markup both start with the same empty cart.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setItems(readStoredCartItems()), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   // Sync with Firestore when User is authenticated
   useEffect(() => {
@@ -87,7 +102,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             setDoc(cartRef, {
               userId: currentUserId,
-              items: merged,
+              items: serializeCartItems(merged),
               updatedAt: new Date().toISOString(),
             }, { merge: true }).catch(() => {});
 
@@ -116,7 +131,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const cartRef = doc(db, 'carts', user.uid);
         setDoc(cartRef, {
           userId: user.uid,
-          items: newItems,
+          items: serializeCartItems(newItems),
           updatedAt: new Date().toISOString(),
         }, { merge: true }).catch(() => {});
       }
@@ -153,7 +168,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const cartRef = doc(db, 'carts', user.uid);
           setDoc(cartRef, {
             userId: user.uid,
-            items: updated,
+            items: serializeCartItems(updated),
             updatedAt: new Date().toISOString(),
           }, { merge: true }).catch(() => {});
         }

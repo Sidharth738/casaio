@@ -101,7 +101,7 @@ export function NotificationBell() {
   const getTypeIcon = (type: AppNotification['type']) => {
     switch (type) {
       case 'order':
-        return <Package className="w-3.5 h-3.5 text-amber-600" />;
+        return <Package className="w-3.5 h-3.5 text-orange-600" />;
       case 'seller_application':
         return <Store className="w-3.5 h-3.5 text-blue-600" />;
       case 'stock_alert':
@@ -118,11 +118,11 @@ export function NotificationBell() {
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         aria-label="View notifications"
-        className="relative p-2 rounded-full text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500"
+        className="relative p-2 rounded-full text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
       >
         <Bell className="w-5 h-5" />
         {unreadCount > 0 && (
-          <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-600 px-1 text-[10px] font-bold text-white shadow-xs">
+          <span className="absolute top-1 right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-600 px-1 text-[10px] font-bold text-white shadow-xs">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
@@ -136,7 +136,7 @@ export function NotificationBell() {
             <div className="flex items-center gap-2">
               <h3 className="font-serif font-bold text-sm text-zinc-950">Notifications</h3>
               {unreadCount > 0 && (
-                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-100 text-amber-800">
+                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-orange-100 text-orange-800">
                   {unreadCount} new
                 </span>
               )}
@@ -147,7 +147,7 @@ export function NotificationBell() {
                 type="button"
                 onClick={handleMarkAllRead}
                 disabled={isMarkingAll}
-                className="text-[11px] font-medium text-amber-700 hover:text-amber-900 flex items-center gap-1 disabled:opacity-50"
+                className="text-[11px] font-medium text-orange-700 hover:text-orange-900 flex items-center gap-1 disabled:opacity-50"
               >
                 {isMarkingAll ? (
                   <Loader2 className="w-3 h-3 animate-spin" />
@@ -163,7 +163,7 @@ export function NotificationBell() {
           <div className="max-h-[380px] overflow-y-auto divide-y divide-zinc-100">
             {!isFetched ? (
               <div className="p-8 text-center text-zinc-400">
-                <Loader2 className="w-5 h-5 animate-spin mx-auto text-amber-600 mb-2" />
+                <Loader2 className="w-5 h-5 animate-spin mx-auto text-orange-600 mb-2" />
                 <p className="text-xs">Loading alerts...</p>
               </div>
             ) : notifications.length === 0 ? (
@@ -182,7 +182,7 @@ export function NotificationBell() {
                   key={notif.id}
                   onClick={() => handleNotificationClick(notif)}
                   className={`p-3.5 flex items-start gap-3 cursor-pointer transition-colors ${
-                    !notif.read ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-zinc-50'
+                    !notif.read ? 'bg-orange-50/40 hover:bg-orange-50/70' : 'hover:bg-zinc-50'
                   }`}
                 >
                   <div className="w-7 h-7 rounded-full bg-white border border-zinc-200 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
@@ -199,7 +199,7 @@ export function NotificationBell() {
                         {notif.title}
                       </p>
                       {!notif.read && (
-                        <span className="w-2 h-2 rounded-full bg-amber-600 shrink-0" />
+                        <span className="w-2 h-2 rounded-full bg-orange-600 shrink-0" />
                       )}
                     </div>
                     <p className="text-[11px] text-zinc-500 leading-relaxed line-clamp-2">
@@ -219,7 +219,7 @@ export function NotificationBell() {
             <Link
               href="/account/notifications"
               onClick={() => setIsOpen(false)}
-              className="text-xs font-semibold text-zinc-700 hover:text-amber-800 flex items-center justify-center gap-1"
+              className="text-xs font-semibold text-zinc-700 hover:text-orange-800 flex items-center justify-center gap-1"
             >
               <span>View Full Notification Center</span>
               <ChevronRight className="w-3.5 h-3.5" />

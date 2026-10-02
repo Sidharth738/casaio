@@ -17,9 +17,9 @@ export const Badge: React.FC<BadgeProps> = ({
     default: 'bg-zinc-100 text-zinc-800 border-zinc-200',
     secondary: 'bg-zinc-800 text-zinc-100 border-zinc-700',
     success: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    warning: 'bg-amber-50 text-amber-700 border-amber-200',
+    warning: 'bg-orange-50 text-orange-700 border-orange-200',
     danger: 'bg-red-50 text-red-700 border-red-200',
-    accent: 'bg-amber-100 text-amber-900 border-amber-300 font-semibold',
+    accent: 'bg-orange-100 text-orange-900 border-orange-300 font-semibold',
     outline: 'bg-transparent text-zinc-700 border-zinc-300',
   };
 

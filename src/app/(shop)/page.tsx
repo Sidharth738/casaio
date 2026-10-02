@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { Container } from '@/components/ui/Container';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, getRenderableImageUrl } from '@/lib/utils';
+import { getCategories, getProducts } from '@/lib/firebase/firestore';
+import type { Category, Product } from '@/types';
 import {
   ArrowRight,
   Sparkles,
@@ -15,60 +17,10 @@ import {
   TrendingUp,
 } from 'lucide-react';
 
-export default function HomePage() {
-  // Curated showcase items demonstrating the design system
-  const showcaseProducts = [
-    {
-      id: 'demo-1',
-      title: 'Scandi Fluted Oak Credenza',
-      category: 'Living Room',
-      seller: 'Nordic Oak Studios',
-      price: 24999,
-      compareAtPrice: 32000,
-      rating: 4.9,
-      reviewsCount: 38,
-      badge: 'Bestseller',
-      imageUrl: 'https://images.unsplash.com/photo-1595428774223-ef52624120d2?auto=format&fit=crop&q=80&w=800',
-    },
-    {
-      id: 'demo-2',
-      title: 'Komorebi Ribbed Glass Pendant Lamp',
-      category: 'Lighting',
-      seller: 'Lumière Atelier',
-      price: 4499,
-      compareAtPrice: 5999,
-      rating: 4.8,
-      reviewsCount: 52,
-      badge: 'Artisan Crafted',
-      imageUrl: 'https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?auto=format&fit=crop&q=80&w=800',
-    },
-    {
-      id: 'demo-3',
-      title: 'Minimalist Travertine Marble Coffee Table',
-      category: 'Living Room',
-      seller: 'Stoneworks Heritage',
-      price: 18500,
-      compareAtPrice: 22000,
-      rating: 5.0,
-      reviewsCount: 19,
-      badge: 'Limited Drop',
-      imageUrl: 'https://images.unsplash.com/photo-1533090161767-e6ffed986c88?auto=format&fit=crop&q=80&w=800',
-    },
-    {
-      id: 'demo-4',
-      title: 'Organic Stoneware Dinnerware Set (16 Pc)',
-      category: 'Kitchen & Dining',
-      seller: 'Clay & Kiln Collective',
-      price: 6890,
-      compareAtPrice: 8500,
-      rating: 4.7,
-      reviewsCount: 44,
-      badge: 'Curator Pick',
-      imageUrl: 'https://images.unsplash.com/photo-1614707267537-b85aaf00c4b7?auto=format&fit=crop&q=80&w=800',
-    },
-  ];
+export const revalidate = 60;
 
-  const categories = [
+export default async function HomePage() {
+  const fallbackCategories = [
     {
       name: 'Living Room',
       count: '140+ Pieces',
@@ -95,6 +47,42 @@ export default function HomePage() {
     },
   ];
 
+  let activeCategories: Category[] = [];
+  try {
+    activeCategories = await getCategories();
+  } catch {
+    // Keep the curated fallback while Firestore is unavailable.
+  }
+  const categories = activeCategories.length > 0
+    ? activeCategories.slice(0, 8).map((category, index) => ({
+        name: category.name,
+        count: 'Explore Collection',
+        imageUrl: getRenderableImageUrl(category.imageUrl) || fallbackCategories[index % fallbackCategories.length].imageUrl,
+        href: `/categories/${category.slug}`,
+      }))
+    : fallbackCategories;
+
+  let activeProducts: Product[] = [];
+  try {
+    activeProducts = (await getProducts({ sortBy: 'newest' })).products;
+  } catch {
+    // Keep the curated fallback while Firestore is unavailable.
+  }
+  const showcaseProducts = activeProducts.slice(0, 8).map((product, index) => ({
+        id: product.id,
+        slug: product.slug,
+        title: product.title,
+        category: activeCategories.find((category) => category.slug === product.categorySlug)?.name || product.categorySlug,
+        seller: product.sellerStoreName,
+        price: product.price,
+        compareAtPrice: product.compareAtPrice,
+        rating: product.ratings?.average ?? 0,
+        reviewsCount: product.ratings?.count ?? 0,
+        badge: product.isFeatured ? 'Featured' : 'New Arrival',
+        imageUrl: getRenderableImageUrl(product.images.find((image) => image.isPrimary)?.url || product.images[0]?.url)
+          || fallbackCategories[index % fallbackCategories.length].imageUrl,
+      }));
+
   return (
     <div className="flex flex-col space-y-16 sm:space-y-24 pb-20">
       
@@ -106,12 +94,12 @@ export default function HomePage() {
             {/* Left Content */}
             <div className="lg:col-span-7 space-y-6">
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/80 border border-zinc-200 text-xs font-medium text-zinc-800 shadow-2xs">
-                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                <Sparkles className="w-3.5 h-3.5 text-orange-600" />
                 <span>Modern Dropshipping Elevated &bull; Fall/Winter 2026</span>
               </div>
 
               <h1 className="font-serif text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-zinc-950 leading-[1.1]">
-                Architectural Elegance For The <span className="italic font-normal text-amber-700">Modern</span> Sanctuary.
+                Architectural Elegance For The <span className="italic font-normal text-orange-700">Modern</span> Sanctuary.
               </h1>
 
               <p className="text-base sm:text-lg text-zinc-600 max-w-xl leading-relaxed">
@@ -165,7 +153,7 @@ export default function HomePage() {
                 {/* Floating Highlight Card */}
                 <div className="absolute -bottom-6 -left-6 bg-white/95 backdrop-blur-md p-4 rounded-xl shadow-xl border border-zinc-200/80 max-w-xs hidden sm:block animate-fade-in">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center text-amber-600 shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center text-orange-600 shrink-0">
                       <ShieldCheck className="w-5 h-5" />
                     </div>
                     <div>
@@ -186,12 +174,12 @@ export default function HomePage() {
         <Container>
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-10">
             <div>
-              <p className="text-xs font-semibold text-amber-700 uppercase tracking-widest">Architectural Spaces</p>
+              <p className="text-xs font-semibold text-orange-700 uppercase tracking-widest">Architectural Spaces</p>
               <h2 className="font-serif text-3xl font-bold text-zinc-950 mt-1">Shop By Sanctuary</h2>
             </div>
             <Link
               href="/categories"
-              className="mt-3 md:mt-0 text-xs font-semibold text-zinc-800 hover:text-amber-700 flex items-center gap-1.5 group"
+              className="mt-3 md:mt-0 text-xs font-semibold text-zinc-800 hover:text-orange-700 flex items-center gap-1.5 group"
             >
               <span>Explore All Categories</span>
               <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
@@ -214,10 +202,10 @@ export default function HomePage() {
                 />
                 <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/20 to-transparent" />
                 <div className="absolute bottom-5 left-5 right-5 text-white">
-                  <span className="text-[11px] uppercase tracking-wider text-amber-300 font-medium">
+                  <span className="text-[11px] uppercase tracking-wider text-orange-300 font-medium">
                     {cat.count}
                   </span>
-                  <h3 className="font-serif text-xl font-bold mt-1 group-hover:text-amber-200 transition-colors">
+                  <h3 className="font-serif text-xl font-bold mt-1 group-hover:text-orange-200 transition-colors">
                     {cat.name}
                   </h3>
                 </div>
@@ -232,7 +220,7 @@ export default function HomePage() {
         <Container>
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-10">
             <div>
-              <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 uppercase tracking-wider">
+              <div className="inline-flex items-center gap-1.5 text-xs font-semibold text-orange-700 uppercase tracking-wider">
                 <TrendingUp className="w-3.5 h-3.5" />
                 <span>Trending Drops</span>
               </div>
@@ -241,15 +229,15 @@ export default function HomePage() {
             </div>
             <Link
               href="/products"
-              className="mt-3 md:mt-0 text-xs font-semibold text-zinc-800 hover:text-amber-700 flex items-center gap-1.5 group"
+              className="mt-3 md:mt-0 text-xs font-semibold text-zinc-800 hover:text-orange-700 flex items-center gap-1.5 group"
             >
-              <span>View All 240+ Products</span>
+              <span>View All Products</span>
               <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
             </Link>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {showcaseProducts.map((product) => (
+            {showcaseProducts.length > 0 ? showcaseProducts.map((product) => (
               <Card key={product.id} hoverEffect className="flex flex-col overflow-hidden group">
                 <div className="relative aspect-4/3 overflow-hidden bg-zinc-100">
                   <Image
@@ -272,13 +260,13 @@ export default function HomePage() {
                     <span className="text-zinc-600 font-medium">By {product.seller}</span>
                   </div>
 
-                  <h3 className="font-serif font-bold text-base text-zinc-900 group-hover:text-amber-700 transition-colors line-clamp-1">
+                  <h3 className="font-serif font-bold text-base text-zinc-900 group-hover:text-orange-700 transition-colors line-clamp-1">
                     {product.title}
                   </h3>
 
                   <div className="flex items-center gap-1.5 my-2">
-                    <div className="flex items-center text-amber-500">
-                      <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+                    <div className="flex items-center text-orange-500">
+                      <Star className="w-3.5 h-3.5 fill-orange-500 text-orange-500" />
                     </div>
                     <span className="text-xs font-semibold text-zinc-800">{product.rating}</span>
                     <span className="text-[11px] text-zinc-400">({product.reviewsCount})</span>
@@ -295,15 +283,24 @@ export default function HomePage() {
                         </span>
                       )}
                     </div>
-                    <Link href={`/products/${product.id}`}>
-                      <Button size="sm" variant="secondary" className="text-xs">
-                        View Piece
-                      </Button>
+                    <Link
+                      href={`/products/${product.slug}`}
+                      className="inline-flex h-8 items-center justify-center rounded-md border border-zinc-200 bg-zinc-100 px-3 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
+                    >
+                      View Piece
                     </Link>
                   </div>
                 </div>
               </Card>
-            ))}
+            )) : (
+              <div className="col-span-full rounded-xl border border-zinc-200 bg-white px-6 py-12 text-center">
+                <h3 className="font-serif text-lg font-semibold text-zinc-900">New pieces are on the way</h3>
+                <p className="mt-2 text-sm text-zinc-500">Browse our catalogue to see the latest Casaio collections.</p>
+                <Link href="/products" className="mt-4 inline-block text-sm font-semibold text-orange-700 hover:text-orange-800">
+                  Browse all products
+                </Link>
+              </div>
+            )}
           </div>
         </Container>
       </section>
@@ -313,7 +310,7 @@ export default function HomePage() {
         <Container>
           <div className="rounded-2xl bg-zinc-950 text-white p-8 sm:p-12 lg:p-16 relative overflow-hidden shadow-2xl">
             {/* Background ambient glow */}
-            <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-amber-600/20 blur-3xl pointer-events-none" />
+            <div className="absolute -top-24 -right-24 w-96 h-96 rounded-full bg-orange-600/20 blur-3xl pointer-events-none" />
 
             <div className="relative z-10 grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
               <div className="lg:col-span-8 space-y-4">
@@ -329,15 +326,15 @@ export default function HomePage() {
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-4 text-xs text-zinc-300">
                   <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <CheckCircle className="w-4 h-4 text-orange-400 shrink-0" />
                     <span>Dedicated Seller Dashboard</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <CheckCircle className="w-4 h-4 text-orange-400 shrink-0" />
                     <span>Direct Weekly Bank Payouts</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                    <CheckCircle className="w-4 h-4 text-orange-400 shrink-0" />
                     <span>Real-time Inventory Sync</span>
                   </div>
                 </div>

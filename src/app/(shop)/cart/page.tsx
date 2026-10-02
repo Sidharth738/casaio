@@ -18,7 +18,7 @@ export default function CartPage() {
       <div className="py-20 sm:py-28">
         <Container>
           <div className="max-w-md mx-auto text-center space-y-5">
-            <div className="w-20 h-20 rounded-full bg-amber-50 mx-auto flex items-center justify-center text-amber-700">
+            <div className="w-20 h-20 rounded-full bg-orange-50 mx-auto flex items-center justify-center text-orange-700">
               <ShoppingBag className="w-10 h-10" />
             </div>
             <h1 className="font-serif text-3xl font-bold text-zinc-950">Your Cart is Empty</h1>
@@ -51,7 +51,7 @@ export default function CartPage() {
         {/* Title & Item Count */}
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
           <div>
-            <p className="text-xs font-semibold text-amber-700 uppercase tracking-widest">Order Review</p>
+            <p className="text-xs font-semibold text-orange-700 uppercase tracking-widest">Order Review</p>
             <h1 className="font-serif text-3xl sm:text-4xl font-bold text-zinc-950 mt-1">
               Shopping Cart ({itemCount} {itemCount === 1 ? 'item' : 'items'})
             </h1>
@@ -98,7 +98,7 @@ export default function CartPage() {
                           <div>
                             <Link
                               href={`/products/${item.slug}`}
-                              className="font-serif text-base sm:text-lg font-bold text-zinc-950 hover:text-amber-700 transition-colors line-clamp-1"
+                              className="font-serif text-base sm:text-lg font-bold text-zinc-950 hover:text-orange-700 transition-colors line-clamp-1"
                             >
                               {item.title}
                             </Link>
@@ -166,21 +166,21 @@ export default function CartPage() {
             {/* Guarantees Box */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-6 text-xs text-zinc-600">
               <div className="flex items-start gap-2.5 p-3 rounded-xl bg-zinc-50 border border-zinc-200/60">
-                <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <ShieldCheck className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold text-zinc-900">100% Quality Vetted</p>
                   <p className="text-[11px] text-zinc-500">Inspected prior to dispatch.</p>
                 </div>
               </div>
               <div className="flex items-start gap-2.5 p-3 rounded-xl bg-zinc-50 border border-zinc-200/60">
-                <Truck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <Truck className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold text-zinc-900">Insured Dropship</p>
                   <p className="text-[11px] text-zinc-500">Free transit door-to-door.</p>
                 </div>
               </div>
               <div className="flex items-start gap-2.5 p-3 rounded-xl bg-zinc-50 border border-zinc-200/60">
-                <RefreshCw className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <RefreshCw className="w-4 h-4 text-orange-600 shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold text-zinc-900">7-Day Returns</p>
                   <p className="text-[11px] text-zinc-500">Hassle-free reverse pickup.</p>

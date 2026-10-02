@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb, adminAuth } from '@/lib/firebase/admin';
 import type { UserRole, UserStatus } from '@/types';
+import { requireServerRole } from '@/lib/firebase/server-auth';
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!await requireServerRole(req, ['admin'])) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     const { id } = await params;
     const body = await req.json();
     const { role, status } = body as {
@@ -57,6 +59,7 @@ export async function POST(
       }
       if (status) {
         await adminAuth.updateUser(id, { disabled: status === 'suspended' });
+        if (status === 'suspended') await adminAuth.revokeRefreshTokens(id);
       }
     } catch (authErr) {
       console.warn('Failed updating Firebase Auth settings for user:', authErr);

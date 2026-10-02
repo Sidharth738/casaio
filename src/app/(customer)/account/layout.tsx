@@ -33,7 +33,7 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
   if (isLoading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-amber-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-orange-600" />
       </div>
     );
   }
@@ -52,7 +52,7 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
         {/* Header summary banner */}
         <div className="bg-white rounded-2xl p-6 mb-8 border border-zinc-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-full bg-zinc-900 text-amber-500 font-serif font-bold text-xl flex items-center justify-center border border-zinc-800 shrink-0">
+            <div className="w-14 h-14 rounded-full bg-zinc-900 text-orange-500 font-serif font-bold text-xl flex items-center justify-center border border-zinc-800 shrink-0">
               {user?.displayName ? user.displayName.charAt(0).toUpperCase() : 'U'}
             </div>
             <div>
@@ -82,9 +82,9 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
             {(role === 'seller' || role === 'admin') && (
               <Link
                 href="/seller/dashboard"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold hover:bg-amber-100 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-orange-50 border border-orange-200 text-orange-900 text-xs font-semibold hover:bg-orange-100 transition-colors"
               >
-                <Store className="w-3.5 h-3.5 text-amber-700" />
+                <Store className="w-3.5 h-3.5 text-orange-700" />
                 <span>Seller Portal</span>
               </Link>
             )}
@@ -94,7 +94,7 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
                 href="/admin/dashboard"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-zinc-900 border border-zinc-800 text-zinc-100 text-xs font-semibold hover:bg-zinc-800 transition-colors"
               >
-                <Shield className="w-3.5 h-3.5 text-amber-400" />
+                <Shield className="w-3.5 h-3.5 text-orange-400" />
                 <span>Admin Operations</span>
               </Link>
             )}
@@ -121,7 +121,7 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
                     )}
                   >
                     <div className="flex items-center gap-3">
-                      <Icon className={cn('w-4 h-4', isActive ? 'text-amber-400' : 'text-zinc-400')} />
+                      <Icon className={cn('w-4 h-4', isActive ? 'text-orange-400' : 'text-zinc-400')} />
                       <span>{item.label}</span>
                     </div>
                     <ChevronRight className={cn('w-3.5 h-3.5', isActive ? 'text-zinc-400' : 'text-zinc-300')} />

@@ -103,7 +103,7 @@ export default function AccountNotificationsPage() {
   const getTypeIcon = (type: AppNotification['type']) => {
     switch (type) {
       case 'order':
-        return <Package className="w-4 h-4 text-amber-600" />;
+        return <Package className="w-4 h-4 text-orange-600" />;
       case 'seller_application':
         return <Store className="w-4 h-4 text-blue-600" />;
       case 'stock_alert':
@@ -165,7 +165,7 @@ export default function AccountNotificationsPage() {
       <div className="bg-white rounded-2xl border border-zinc-200/80 shadow-xs divide-y divide-zinc-100 overflow-hidden">
         {loading ? (
           <div className="p-16 text-center text-zinc-400">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto text-amber-600 mb-2" />
+            <Loader2 className="w-8 h-8 animate-spin mx-auto text-orange-600 mb-2" />
             <p className="text-xs">Loading your notifications...</p>
           </div>
         ) : filtered.length === 0 ? (
@@ -186,7 +186,7 @@ export default function AccountNotificationsPage() {
               <div
                 key={notif.id}
                 className={`p-4 sm:p-5 flex items-start gap-4 transition-colors ${
-                  !notif.read ? 'bg-amber-50/30' : 'hover:bg-zinc-50/50'
+                  !notif.read ? 'bg-orange-50/30' : 'hover:bg-zinc-50/50'
                 }`}
               >
                 {/* Type Icon */}
@@ -205,7 +205,7 @@ export default function AccountNotificationsPage() {
                       {notif.title}
                     </h3>
                     {!notif.read && (
-                      <span className="w-2 h-2 rounded-full bg-amber-600 shrink-0" />
+                      <span className="w-2 h-2 rounded-full bg-orange-600 shrink-0" />
                     )}
                   </div>
 
@@ -221,7 +221,7 @@ export default function AccountNotificationsPage() {
                     {notif.link && (
                       <Link
                         href={notif.link}
-                        className="text-xs font-semibold text-amber-700 hover:text-amber-900 flex items-center gap-1"
+                        className="text-xs font-semibold text-orange-700 hover:text-orange-900 flex items-center gap-1"
                       >
                         <span>View Details</span>
                         <ChevronRight className="w-3 h-3" />

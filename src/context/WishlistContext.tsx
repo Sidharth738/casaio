@@ -19,7 +19,14 @@ const WishlistContext = createContext<WishlistContextType | undefined>(undefined
 
 const WISHLIST_STORAGE_KEY = 'casaio_guest_wishlist';
 
-function getInitialWishlistItems(): WishlistItem[] {
+function serializeWishlistItems(items: WishlistItem[]) {
+  return items.map(({ compareAtPrice, ...item }) => ({
+    ...item,
+    ...(compareAtPrice !== undefined ? { compareAtPrice } : {}),
+  }));
+}
+
+function readStoredWishlistItems(): WishlistItem[] {
   if (typeof window === 'undefined') return [];
   try {
     const stored = localStorage.getItem(WISHLIST_STORAGE_KEY);
@@ -33,7 +40,13 @@ function getInitialWishlistItems(): WishlistItem[] {
 
 export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
-  const [items, setItems] = useState<WishlistItem[]>(getInitialWishlistItems);
+  const [items, setItems] = useState<WishlistItem[]>([]);
+
+  // Load local storage after hydration to keep server and client markup aligned.
+  useEffect(() => {
+    const timer = window.setTimeout(() => setItems(readStoredWishlistItems()), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   // Sync with Firestore when User is authenticated
   useEffect(() => {
@@ -61,7 +74,7 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
             setDoc(wishlistRef, {
               userId: currentUserId,
-              items: merged,
+              items: serializeWishlistItems(merged),
               updatedAt: new Date().toISOString(),
             }, { merge: true }).catch(() => {});
 
@@ -88,7 +101,7 @@ export const WishlistProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         const wishlistRef = doc(db, 'wishlists', user.uid);
         setDoc(wishlistRef, {
           userId: user.uid,
-          items: newItems,
+          items: serializeWishlistItems(newItems),
           updatedAt: new Date().toISOString(),
         }, { merge: true }).catch(() => {});
       }

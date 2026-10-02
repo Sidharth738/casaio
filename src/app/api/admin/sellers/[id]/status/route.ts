@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb, adminAuth } from '@/lib/firebase/admin';
 import type { SellerStatus } from '@/types';
+import { requireServerRole } from '@/lib/firebase/server-auth';
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!await requireServerRole(req, ['admin'])) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     const { id } = await params;
     const body = await req.json();
     const { status, statusReason } = body as {

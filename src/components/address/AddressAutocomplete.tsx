@@ -87,18 +87,18 @@ export function AddressAutocomplete({
     <div className="relative w-full" ref={containerRef}>
       <div className="relative">
         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
-          <MapPin className="w-4 h-4 text-amber-600" />
+          <MapPin className="w-4 h-4 text-orange-600" />
         </div>
         <input
           type="text"
           value={query}
           onChange={(e) => handleQueryChange(e.target.value)}
           placeholder={placeholder}
-          className="w-full pl-9 pr-9 py-2.5 text-xs bg-amber-50/20 border border-amber-200/80 rounded-xl text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 transition-colors"
+          className="w-full pl-9 pr-9 py-2.5 text-xs bg-orange-50/20 border border-orange-200/80 rounded-xl text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 transition-colors"
         />
         <div className="absolute right-3 top-1/2 -translate-y-1/2">
           {isLoading ? (
-            <Loader2 className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+            <Loader2 className="w-3.5 h-3.5 text-orange-600 animate-spin" />
           ) : (
             <Search className="w-3.5 h-3.5 text-zinc-400" />
           )}
@@ -114,7 +114,7 @@ export function AddressAutocomplete({
               onClick={() => handleSelectSuggestion(s)}
               className="w-full text-left px-3.5 py-2.5 hover:bg-zinc-50 flex items-start gap-2.5 transition-colors"
             >
-              <MapPin className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+              <MapPin className="w-3.5 h-3.5 text-orange-600 shrink-0 mt-0.5" />
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-semibold text-zinc-900 truncate">
                   {s.mainText}

@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { timingSafeEqual } from 'crypto';
 
 export async function POST(request: NextRequest) {
   try {
-    const { targetUid, role, bootstrapSecret } = await request.json();
+    const { targetUid, role } = await request.json();
 
     if (!targetUid || !role) {
       return NextResponse.json({ error: 'Missing targetUid or role' }, { status: 400 });
@@ -15,18 +16,21 @@ export async function POST(request: NextRequest) {
 
     // Authorization check: Either valid bootstrap secret or requester is an admin
     const authHeader = request.headers.get('Authorization');
-    const secretMatches =
-      bootstrapSecret &&
-      bootstrapSecret === (process.env.ADMIN_BOOTSTRAP_SECRET || 'casaio_dev_secret_2026');
+    const bootstrapSecret = request.headers.get('x-admin-bootstrap-secret');
+    const configuredSecret = process.env.ADMIN_BOOTSTRAP_SECRET;
+    const providedSecretBytes = Buffer.from(bootstrapSecret || '');
+    const configuredSecretBytes = Buffer.from(configuredSecret || '');
+    const secretMatches = Boolean(configuredSecret && providedSecretBytes.length > 0 &&
+      providedSecretBytes.length === configuredSecretBytes.length &&
+      timingSafeEqual(providedSecretBytes, configuredSecretBytes));
 
     let isAuthorizedAdmin = false;
 
     if (!secretMatches && authHeader?.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
       const decoded = await adminAuth.verifyIdToken(token);
-      if (decoded.role === 'admin') {
-        isAuthorizedAdmin = true;
-      }
+      const requester = await adminDb.collection('users').doc(decoded.uid).get();
+      isAuthorizedAdmin = requester.data()?.role === 'admin' && requester.data()?.status !== 'suspended';
     }
 
     if (!secretMatches && !isAuthorizedAdmin) {
@@ -37,7 +41,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Set Custom Claims on Firebase Authentication
-    await adminAuth.setCustomUserClaims(targetUid, { role });
+    const existing = await adminAuth.getUser(targetUid);
+    await adminAuth.setCustomUserClaims(targetUid, { ...existing.customClaims, role });
 
     // Update user document in Firestore
     const userRef = adminDb.collection('users').doc(targetUid);

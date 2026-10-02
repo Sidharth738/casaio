@@ -115,7 +115,7 @@ export default function AdminUsersPage() {
         );
       case 'seller':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-50 text-orange-700 border border-orange-200">
             <Store className="w-3 h-3" />
             Seller
           </span>
@@ -175,7 +175,7 @@ export default function AdminUsersPage() {
             <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
               Sellers
             </span>
-            <Store className="w-4 h-4 text-amber-600" />
+            <Store className="w-4 h-4 text-orange-600" />
           </div>
           <div className="text-2xl font-bold font-serif text-zinc-950 mt-2">
             {sellerCount}
@@ -204,7 +204,7 @@ export default function AdminUsersPage() {
             placeholder="Search by name, email, or phone number..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-zinc-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+            className="w-full pl-9 pr-4 py-2 text-xs rounded-lg border border-zinc-200 focus:outline-none focus:ring-1 focus:ring-orange-500"
           />
         </div>
 
@@ -213,7 +213,7 @@ export default function AdminUsersPage() {
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value as 'all' | UserRole)}
-            className="text-xs px-3 py-2 rounded-lg border border-zinc-200 bg-white text-zinc-700 focus:outline-none focus:ring-1 focus:ring-amber-500"
+            className="text-xs px-3 py-2 rounded-lg border border-zinc-200 bg-white text-zinc-700 focus:outline-none focus:ring-1 focus:ring-orange-500"
           >
             <option value="all">All Roles</option>
             <option value="customer">Customers</option>
@@ -224,7 +224,7 @@ export default function AdminUsersPage() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value as 'all' | UserStatus)}
-            className="text-xs px-3 py-2 rounded-lg border border-zinc-200 bg-white text-zinc-700 focus:outline-none focus:ring-1 focus:ring-amber-500"
+            className="text-xs px-3 py-2 rounded-lg border border-zinc-200 bg-white text-zinc-700 focus:outline-none focus:ring-1 focus:ring-orange-500"
           >
             <option value="all">All Statuses</option>
             <option value="active">Active</option>
@@ -237,7 +237,7 @@ export default function AdminUsersPage() {
       <div className="bg-white rounded-xl border border-zinc-200 shadow-xs overflow-hidden">
         {loading ? (
           <div className="p-12 text-center text-zinc-400">
-            <Loader2 className="w-6 h-6 animate-spin mx-auto text-amber-600 mb-2" />
+            <Loader2 className="w-6 h-6 animate-spin mx-auto text-orange-600 mb-2" />
             <p className="text-xs">Loading user registry...</p>
           </div>
         ) : filteredUsers.length === 0 ? (
@@ -289,7 +289,7 @@ export default function AdminUsersPage() {
                             <div className="font-semibold text-zinc-900 flex items-center gap-1.5">
                               <span>{u.displayName || 'Anonymous User'}</span>
                               {isCurrentAdmin && (
-                                <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded font-normal">
+                                <span className="text-[10px] bg-orange-100 text-orange-800 px-1.5 py-0.2 rounded font-normal">
                                   You
                                 </span>
                               )}
@@ -328,7 +328,7 @@ export default function AdminUsersPage() {
                                   role: e.target.value as UserRole,
                                 })
                               }
-                              className="text-[10px] py-0.5 px-1.5 rounded border border-zinc-200 bg-white text-zinc-600 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                              className="text-[10px] py-0.5 px-1.5 rounded border border-zinc-200 bg-white text-zinc-600 focus:outline-none focus:ring-1 focus:ring-orange-500"
                             >
                               <option value="customer">Set Customer</option>
                               <option value="seller">Set Seller</option>

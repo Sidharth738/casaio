@@ -55,7 +55,7 @@ export function ReviewsSection({ productId, initialRating = 5, initialCount = 0 
       {/* Section heading */}
       <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
         <div>
-          <p className="text-xs font-semibold text-amber-700 uppercase tracking-widest">
+          <p className="text-xs font-semibold text-orange-700 uppercase tracking-widest">
             Customer Impressions
           </p>
           <h2 className="font-serif text-2xl sm:text-3xl font-bold text-zinc-950 mt-1">
@@ -88,11 +88,11 @@ export function ReviewsSection({ productId, initialRating = 5, initialCount = 0 
                 <div key={star} className="flex items-center gap-2">
                   <div className="flex items-center gap-0.5 w-16 shrink-0">
                     <span className="text-[11px] text-zinc-600 font-medium">{star}</span>
-                    <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                    <Star className="w-3 h-3 fill-orange-500 text-orange-500" />
                   </div>
                   <div className="flex-1 h-1.5 bg-zinc-100 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-amber-500 rounded-full transition-all duration-500"
+                      className="h-full bg-orange-500 rounded-full transition-all duration-500"
                       style={{ width: `${pct}%` }}
                     />
                   </div>

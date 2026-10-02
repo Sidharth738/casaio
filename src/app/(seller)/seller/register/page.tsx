@@ -94,7 +94,7 @@ export default function SellerRegisterPage() {
         <Card className="shadow-lg border-zinc-200">
           <CardContent className="p-8 sm:p-10 space-y-6">
             <div className="text-center max-w-lg mx-auto space-y-2">
-              <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center mx-auto border border-amber-200">
+              <div className="w-12 h-12 rounded-full bg-orange-50 text-orange-700 flex items-center justify-center mx-auto border border-orange-200">
                 <Store className="w-6 h-6" />
               </div>
               <h1 className="font-serif text-3xl font-bold text-zinc-950">
@@ -113,7 +113,7 @@ export default function SellerRegisterPage() {
                 <div>
                   <h3 className="font-serif text-xl font-bold text-zinc-900">Application Submitted</h3>
                   <p className="text-xs text-zinc-600 max-w-md mx-auto mt-1">
-                    Your seller application for <strong className="text-zinc-900">{storeName}</strong> has been received with status <span className="font-mono text-amber-700 font-semibold">PENDING APPROVAL</span>. Our onboarding team evaluates applications within 24-48 hours.
+                    Your seller application for <strong className="text-zinc-900">{storeName}</strong> has been received with status <span className="font-mono text-orange-700 font-semibold">PENDING APPROVAL</span>. Our onboarding team evaluates applications within 24-48 hours.
                   </p>
                 </div>
                 <div className="pt-2">
@@ -134,7 +134,7 @@ export default function SellerRegisterPage() {
                 )}
 
                 {!isAuthenticated && (
-                  <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                  <div className="p-3 rounded-lg bg-orange-50 border border-orange-200 text-xs text-orange-900">
                     You must have a Casaio customer account to submit a seller application.{' '}
                     <Link href="/login?redirect=/seller/register" className="font-bold underline">
                       Sign in or create an account

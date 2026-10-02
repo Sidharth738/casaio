@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -69,6 +69,7 @@ declare global {
 }
 
 export default function CheckoutPage() {
+  const checkoutRequest = useRef({ fingerprint: '', id: '' });
   const router = useRouter();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { items, itemCount, subtotal, clearCart } = useCart();
@@ -159,7 +160,8 @@ export default function CheckoutPage() {
       const created = freshList.find((a) => a.id === newId) || freshList[0];
       setSelectedAddress(created);
       setIsAddingAddress(false);
-    } catch {
+    } catch (error) {
+      console.error('Checkout address save failed:', error);
       setCheckoutError('Failed to save delivery address.');
     } finally {
       setAddressLoading(false);
@@ -188,11 +190,21 @@ export default function CheckoutPage() {
     setIsProcessing(true);
 
     try {
+      const checkoutFingerprint = JSON.stringify({
+        paymentMethod,
+        items: items.map((item) => [item.productId, item.quantity]),
+        addressId: selectedAddress.id,
+        couponCode: couponResult?.isValid ? couponResult.coupon?.code : '',
+      });
+      if (checkoutRequest.current.fingerprint !== checkoutFingerprint) {
+        checkoutRequest.current = { fingerprint: checkoutFingerprint, id: crypto.randomUUID() };
+      }
       // 1. Call server API to create the Firestore Order doc and reserve inventory
       const createRes = await fetch('/api/orders/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          checkoutRequestId: checkoutRequest.current.id,
           customerId: user.uid,
           customerDetails: {
             name: user.displayName || selectedAddress.fullName,
@@ -213,6 +225,12 @@ export default function CheckoutPage() {
 
       const { orderId, orderNumber } = orderData;
 
+      if (orderData.paymentStatus === 'captured') {
+        clearCart();
+        router.push(`/order-confirmation/${orderId}`);
+        return;
+      }
+
       // 2. If Cash on Delivery, order is confirmed immediately
       if (paymentMethod === 'cod') {
         clearCart();
@@ -225,14 +243,7 @@ export default function CheckoutPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          amount: grandTotal,
-          currency: 'INR',
-          receipt: `rcpt_${orderId.slice(0, 10)}`,
-          notes: {
-            orderId,
-            orderNumber,
-            customerId: user.uid,
-          },
+          orderId,
         }),
       });
 
@@ -414,7 +425,7 @@ export default function CheckoutPage() {
 
                 {/* Unauthenticated Prompt */}
                 {!isAuthenticated && (
-                  <div className="p-4 rounded-xl bg-amber-50/60 border border-amber-200 text-xs text-amber-900 mb-4 flex items-center justify-between gap-4">
+                  <div className="p-4 rounded-xl bg-orange-50/60 border border-orange-200 text-xs text-orange-900 mb-4 flex items-center justify-between gap-4">
                     <div>
                       <p className="font-medium">Have a Casaio account?</p>
                       <p className="text-zinc-600 mt-0.5">
@@ -660,9 +671,9 @@ export default function CheckoutPage() {
                 {/* Coupon Code Section */}
                 <div className="pt-4 border-t border-zinc-100">
                   {couponResult?.isValid ? (
-                    <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200 flex items-center justify-between text-xs text-amber-900">
+                    <div className="p-3 rounded-xl bg-orange-50/70 border border-orange-200 flex items-center justify-between text-xs text-orange-900">
                       <div className="flex items-center gap-2">
-                        <Tag className="w-4 h-4 text-amber-600" />
+                        <Tag className="w-4 h-4 text-orange-600" />
                         <div>
                           <span className="font-bold">{couponResult.coupon?.code}</span>
                           <span className="text-zinc-600 ml-1.5">

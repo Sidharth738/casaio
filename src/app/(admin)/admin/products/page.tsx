@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {
   Package,
+  Plus,
   Search,
   Star,
   ExternalLink,
@@ -119,8 +120,15 @@ export default function AdminProductsPage() {
           </p>
         </div>
 
-        <div className="text-xs font-mono text-zinc-400">
-          {products.length} products listed
+        <div className="flex items-center justify-between sm:justify-end gap-4">
+          <div className="text-xs font-mono text-zinc-400">
+            {products.length} products listed
+          </div>
+          <Link href="/admin/products/new">
+            <Button variant="primary" size="sm" leftIcon={<Plus className="w-4 h-4" />}>
+              Add Product
+            </Button>
+          </Link>
         </div>
       </div>
 
@@ -157,7 +165,7 @@ export default function AdminProductsPage() {
       {/* Products Table */}
       {loading ? (
         <div className="py-20 flex flex-col items-center justify-center text-zinc-400">
-          <Loader2 className="w-8 h-8 animate-spin mb-3 text-amber-600" />
+          <Loader2 className="w-8 h-8 animate-spin mb-3 text-orange-600" />
           <p className="text-xs">Loading global inventory...</p>
         </div>
       ) : filteredProducts.length === 0 ? (
@@ -215,7 +223,7 @@ export default function AdminProductsPage() {
                             <Link
                               href={`/products/${p.slug}`}
                               target="_blank"
-                              className="font-medium text-zinc-900 hover:text-amber-700 transition-colors truncate block"
+                              className="font-medium text-zinc-900 hover:text-orange-700 transition-colors truncate block"
                             >
                               {p.title}
                             </Link>
@@ -249,11 +257,11 @@ export default function AdminProductsPage() {
                           disabled={actionLoading === p.id}
                           className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-colors ${
                             p.isFeatured
-                              ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                              ? 'bg-orange-100 text-orange-900 border border-orange-300'
                               : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200'
                           }`}
                         >
-                          <Star className={`w-3 h-3 ${p.isFeatured ? 'fill-amber-600 text-amber-600' : ''}`} />
+                          <Star className={`w-3 h-3 ${p.isFeatured ? 'fill-orange-600 text-orange-600' : ''}`} />
                           <span>{p.isFeatured ? 'Featured' : 'Standard'}</span>
                         </button>
                       </td>

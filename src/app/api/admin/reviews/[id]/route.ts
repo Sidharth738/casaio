@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import type { Review } from '@/types';
+import { requireServerRole } from '@/lib/firebase/server-auth';
 
 async function recalculateProductRating(productId: string) {
   try {
@@ -30,6 +31,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!await requireServerRole(req, ['admin'])) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     const { id } = await params;
     const body = await req.json();
     const { status, sellerResponseComment } = body as {
@@ -86,6 +88,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    if (!await requireServerRole(_req, ['admin'])) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     const { id } = await params;
     const reviewRef = adminDb.collection('reviews').doc(id);
     const snap = await reviewRef.get();

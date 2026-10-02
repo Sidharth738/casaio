@@ -46,9 +46,9 @@ export function ReviewStars({
             className={cn(
               size,
               filled || half
-                ? 'fill-amber-500 text-amber-500'
+                ? 'fill-orange-500 text-orange-500'
                 : 'fill-zinc-200 text-zinc-200',
-              interactive && 'cursor-pointer transition-colors hover:fill-amber-400 hover:text-amber-400'
+              interactive && 'cursor-pointer transition-colors hover:fill-orange-400 hover:text-orange-400'
             )}
           />
         );
@@ -60,7 +60,7 @@ export function ReviewStars({
               type="button"
               aria-label={`Rate ${value} star${value !== 1 ? 's' : ''}`}
               onClick={() => onRate?.(value)}
-              className="focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 rounded"
+              className="focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 rounded"
             >
               {icon}
             </button>

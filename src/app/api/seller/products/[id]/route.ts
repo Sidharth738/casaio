@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
+import { requireServerRole } from '@/lib/firebase/server-auth';
 
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await requireServerRole(req, ['seller', 'admin']);
+    if (!user) return NextResponse.json({ error: 'Seller access required' }, { status: 403 });
     const { id } = await params;
     const body = await req.json();
-    const { sellerId, ...updates } = body;
+    const updates = { ...body };
+    delete updates.sellerId;
 
     const docRef = adminDb.collection('products').doc(id);
     const snap = await docRef.get();
@@ -21,7 +25,7 @@ export async function PUT(
     }
 
     const currentData = snap.data();
-    if (sellerId && currentData?.sellerId !== sellerId) {
+    if (user.role !== 'admin' && currentData?.sellerId !== user.uid) {
       return NextResponse.json(
         { error: 'Unauthorized: you do not own this product' },
         { status: 403 }
@@ -54,9 +58,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const user = await requireServerRole(req, ['seller', 'admin']);
+    if (!user) return NextResponse.json({ error: 'Seller access required' }, { status: 403 });
     const { id } = await params;
-    const url = new URL(req.url);
-    const sellerId = url.searchParams.get('sellerId');
 
     const docRef = adminDb.collection('products').doc(id);
     const snap = await docRef.get();
@@ -69,7 +73,7 @@ export async function DELETE(
     }
 
     const currentData = snap.data();
-    if (sellerId && currentData?.sellerId !== sellerId) {
+    if (user.role !== 'admin' && currentData?.sellerId !== user.uid) {
       return NextResponse.json(
         { error: 'Unauthorized: you do not own this product' },
         { status: 403 }

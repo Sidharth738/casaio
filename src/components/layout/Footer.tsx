@@ -19,7 +19,7 @@ export const Footer: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 border-b border-zinc-900">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
           <div className="flex items-start gap-4">
-            <div className="p-2.5 rounded-lg bg-zinc-900 text-amber-500 border border-zinc-800">
+            <div className="p-2.5 rounded-lg bg-zinc-900 text-orange-500 border border-zinc-800">
               <Truck className="w-6 h-6" />
             </div>
             <div>
@@ -31,7 +31,7 @@ export const Footer: React.FC = () => {
           </div>
 
           <div className="flex items-start gap-4">
-            <div className="p-2.5 rounded-lg bg-zinc-900 text-amber-500 border border-zinc-800">
+            <div className="p-2.5 rounded-lg bg-zinc-900 text-orange-500 border border-zinc-800">
               <CreditCard className="w-6 h-6" />
             </div>
             <div>
@@ -43,7 +43,7 @@ export const Footer: React.FC = () => {
           </div>
 
           <div className="flex items-start gap-4">
-            <div className="p-2.5 rounded-lg bg-zinc-900 text-amber-500 border border-zinc-800">
+            <div className="p-2.5 rounded-lg bg-zinc-900 text-orange-500 border border-zinc-800">
               <RotateCcw className="w-6 h-6" />
             </div>
             <div>
@@ -55,7 +55,7 @@ export const Footer: React.FC = () => {
           </div>
 
           <div className="flex items-start gap-4">
-            <div className="p-2.5 rounded-lg bg-zinc-900 text-amber-500 border border-zinc-800">
+            <div className="p-2.5 rounded-lg bg-zinc-900 text-orange-500 border border-zinc-800">
               <ShieldCheck className="w-6 h-6" />
             </div>
             <div>
@@ -74,7 +74,7 @@ export const Footer: React.FC = () => {
           
           {/* Brand Info */}
           <div className="lg:col-span-2 space-y-4">
-            <div className="bg-zinc-900/60 p-1 rounded-md inline-block">
+            <div className="bg-white p-1 rounded-md inline-block">
               <Logo size="md" showSubtitle />
             </div>
             <p className="text-xs text-zinc-400 leading-relaxed max-w-sm">
@@ -91,13 +91,13 @@ export const Footer: React.FC = () => {
                   <input
                     type="email"
                     placeholder="Enter your email address"
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-l-md px-3.5 py-2 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-amber-600 focus:ring-1 focus:ring-amber-600"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-l-md px-3.5 py-2 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-orange-600 focus:ring-1 focus:ring-orange-600"
                   />
                   <Mail className="absolute right-3 top-2.5 w-3.5 h-3.5 text-zinc-500" />
                 </div>
                 <button
                   type="submit"
-                  className="bg-amber-600 hover:bg-amber-700 text-white px-3.5 py-2 rounded-r-md text-xs font-semibold transition-colors flex items-center justify-center shrink-0"
+                  className="bg-orange-600 hover:bg-orange-700 text-white px-3.5 py-2 rounded-r-md text-xs font-semibold transition-colors flex items-center justify-center shrink-0"
                 >
                   <ArrowRight className="w-4 h-4" />
                 </button>
@@ -114,12 +114,12 @@ export const Footer: React.FC = () => {
               Curated Collections
             </h4>
             <ul className="space-y-2.5 text-xs text-zinc-400">
-              <li><Link href="/categories/living-room" className="hover:text-amber-400 transition-colors">Living Room</Link></li>
-              <li><Link href="/categories/lighting" className="hover:text-amber-400 transition-colors">Architectural Lighting</Link></li>
-              <li><Link href="/categories/decor" className="hover:text-amber-400 transition-colors">Artisan Home Decor</Link></li>
-              <li><Link href="/categories/kitchen" className="hover:text-amber-400 transition-colors">Dining & Kitchen</Link></li>
-              <li><Link href="/categories/bed-bath" className="hover:text-amber-400 transition-colors">Bed & Bath Linen</Link></li>
-              <li><Link href="/products?isFeatured=true" className="hover:text-amber-400 transition-colors">Featured New Arrivals</Link></li>
+              <li><Link href="/categories/living-room" className="hover:text-orange-400 transition-colors">Living Room</Link></li>
+              <li><Link href="/categories/lighting" className="hover:text-orange-400 transition-colors">Architectural Lighting</Link></li>
+              <li><Link href="/categories/decor" className="hover:text-orange-400 transition-colors">Artisan Home Decor</Link></li>
+              <li><Link href="/categories/kitchen" className="hover:text-orange-400 transition-colors">Dining & Kitchen</Link></li>
+              <li><Link href="/categories/bed-bath" className="hover:text-orange-400 transition-colors">Bed & Bath Linen</Link></li>
+              <li><Link href="/products?isFeatured=true" className="hover:text-orange-400 transition-colors">Featured New Arrivals</Link></li>
             </ul>
           </div>
 
@@ -129,11 +129,11 @@ export const Footer: React.FC = () => {
               Customer Experience
             </h4>
             <ul className="space-y-2.5 text-xs text-zinc-400">
-              <li><Link href="/account/orders" className="hover:text-amber-400 transition-colors">Track Order Status</Link></li>
-              <li><Link href="/shipping-policy" className="hover:text-amber-400 transition-colors">Shipping & Delivery</Link></li>
-              <li><Link href="/returns-refunds" className="hover:text-amber-400 transition-colors">Returns & Exchanges</Link></li>
-              <li><Link href="/faq" className="hover:text-amber-400 transition-colors">Help & FAQ</Link></li>
-              <li><Link href="/contact" className="hover:text-amber-400 transition-colors">Contact Support</Link></li>
+              <li><Link href="/account/orders" className="hover:text-orange-400 transition-colors">Track Order Status</Link></li>
+              <li><Link href="/shipping-policy" className="hover:text-orange-400 transition-colors">Shipping & Delivery</Link></li>
+              <li><Link href="/returns-refunds" className="hover:text-orange-400 transition-colors">Returns & Exchanges</Link></li>
+              <li><Link href="/faq" className="hover:text-orange-400 transition-colors">Help & FAQ</Link></li>
+              <li><Link href="/contact" className="hover:text-orange-400 transition-colors">Contact Support</Link></li>
             </ul>
           </div>
 
@@ -143,10 +143,10 @@ export const Footer: React.FC = () => {
               Seller Platform
             </h4>
             <ul className="space-y-2.5 text-xs text-zinc-400">
-              <li><Link href="/seller/register" className="hover:text-amber-400 transition-colors">Sell on Casaio</Link></li>
-              <li><Link href="/seller/dashboard" className="hover:text-amber-400 transition-colors">Seller Portal Login</Link></li>
-              <li><Link href="/seller/guidelines" className="hover:text-amber-400 transition-colors">Supplier Standards</Link></li>
-              <li><Link href="/seller/dropship-faq" className="hover:text-amber-400 transition-colors">Dropship Logistics</Link></li>
+              <li><Link href="/seller/register" className="hover:text-orange-400 transition-colors">Sell on Casaio</Link></li>
+              <li><Link href="/seller/dashboard" className="hover:text-orange-400 transition-colors">Seller Portal Login</Link></li>
+              <li><Link href="/seller/guidelines" className="hover:text-orange-400 transition-colors">Supplier Standards</Link></li>
+              <li><Link href="/seller/dropship-faq" className="hover:text-orange-400 transition-colors">Dropship Logistics</Link></li>
               <li><Link href="/admin/dashboard" className="text-zinc-600 hover:text-zinc-400 transition-colors">Platform Admin</Link></li>
             </ul>
           </div>

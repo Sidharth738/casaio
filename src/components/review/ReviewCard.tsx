@@ -81,8 +81,8 @@ export function ReviewCard({ review }: ReviewCardProps) {
 
       {/* Seller response */}
       {review.sellerResponse && (
-        <div className="mt-2 pl-3 border-l-2 border-amber-300 bg-amber-50/50 rounded-r-lg p-3">
-          <p className="text-[11px] font-semibold text-amber-800 mb-0.5">Seller Response</p>
+        <div className="mt-2 pl-3 border-l-2 border-orange-300 bg-orange-50/50 rounded-r-lg p-3">
+          <p className="text-[11px] font-semibold text-orange-800 mb-0.5">Seller Response</p>
           <p className="text-xs text-zinc-600 leading-relaxed">{review.sellerResponse.comment}</p>
           <p className="text-[10px] text-zinc-400 mt-1">{formatDate(review.sellerResponse.respondedAt)}</p>
         </div>

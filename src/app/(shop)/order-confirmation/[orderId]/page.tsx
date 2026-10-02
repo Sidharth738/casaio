@@ -47,7 +47,7 @@ export default function OrderConfirmationPage() {
   if (loading) {
     return (
       <div className="py-24 bg-[#FAFAF8] min-h-[75vh] flex flex-col items-center justify-center text-zinc-400">
-        <Loader2 className="w-8 h-8 animate-spin mb-3 text-amber-600" />
+        <Loader2 className="w-8 h-8 animate-spin mb-3 text-orange-600" />
         <p className="text-xs">Retrieving your order confirmation...</p>
       </div>
     );
@@ -158,9 +158,9 @@ export default function OrderConfirmationPage() {
               {order.items.map((item, idx) => (
                 <div key={idx} className="py-3.5 first:pt-0 last:pb-0 flex items-center gap-3.5">
                   <div className="relative w-14 h-14 rounded-lg bg-zinc-100 overflow-hidden shrink-0 border border-zinc-200">
-                    {item.imageUrl ? (
+                    {typeof item.imageUrl === 'string' && item.imageUrl.trim() ? (
                       <Image
-                        src={item.imageUrl}
+                        src={item.imageUrl.trim()}
                         alt={item.title}
                         fill
                         sizes="56px"

@@ -118,7 +118,7 @@ export default function WishlistPage() {
                 </p>
 
                 <Link href={`/products/${item.slug}`}>
-                  <h4 className="font-serif font-bold text-sm text-zinc-900 group-hover:text-amber-700 transition-colors line-clamp-1 mb-2">
+                  <h4 className="font-serif font-bold text-sm text-zinc-900 group-hover:text-orange-700 transition-colors line-clamp-1 mb-2">
                     {item.title}
                   </h4>
                 </Link>

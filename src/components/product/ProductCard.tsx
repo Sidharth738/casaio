@@ -4,7 +4,6 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Heart, ShoppingBag, Star } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
-import { Button } from '@/components/ui/Button';
 import { formatCurrency } from '@/lib/utils';
 import { useWishlist } from '@/hooks/useWishlist';
 import type { Product } from '@/types';
@@ -113,7 +112,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
         </div>
 
         <Link href={`/products/${product.slug}`}>
-          <h3 className="font-serif font-bold text-sm text-zinc-900 group-hover:text-amber-700 transition-colors line-clamp-2 leading-snug mb-2">
+          <h3 className="font-serif font-bold text-sm text-zinc-900 group-hover:text-orange-700 transition-colors line-clamp-2 leading-snug mb-2">
             {product.title}
           </h3>
         </Link>
@@ -121,7 +120,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
         {/* Rating */}
         {product.ratings.count > 0 && (
           <div className="flex items-center gap-1 mb-2">
-            <Star className="w-3.5 h-3.5 fill-amber-500 text-amber-500" />
+            <Star className="w-3.5 h-3.5 fill-orange-500 text-orange-500" />
             <span className="text-xs font-semibold text-zinc-800">
               {product.ratings.average.toFixed(1)}
             </span>
@@ -141,15 +140,16 @@ export function ProductCard({ product, className }: ProductCardProps) {
               </span>
             )}
           </div>
-          <Link href={`/products/${product.slug}`}>
-            <Button
-              size="sm"
-              variant={isOutOfStock ? 'ghost' : 'secondary'}
-              disabled={isOutOfStock}
-              className="text-xs shrink-0"
-            >
-              {isOutOfStock ? 'Sold Out' : 'View'}
-            </Button>
+          <Link
+            href={`/products/${product.slug}`}
+            className={cn(
+              'inline-flex h-8 shrink-0 items-center justify-center rounded-md border px-3 text-xs font-medium transition-colors',
+              isOutOfStock
+                ? 'border-transparent text-zinc-600 hover:bg-zinc-100'
+                : 'border-zinc-200 bg-zinc-100 text-zinc-900 hover:bg-zinc-200'
+            )}
+          >
+            View
           </Link>
         </div>
       </div>

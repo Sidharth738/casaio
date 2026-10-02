@@ -100,7 +100,7 @@ export default function AdminDashboardPage() {
   if (loading) {
     return (
       <div className="py-24 flex flex-col items-center justify-center text-zinc-400">
-        <Loader2 className="w-8 h-8 animate-spin mb-3 text-amber-600" />
+        <Loader2 className="w-8 h-8 animate-spin mb-3 text-orange-600" />
         <p className="text-xs">Compiling platform telemetry and governance stats...</p>
       </div>
     );
@@ -150,7 +150,7 @@ export default function AdminDashboardPage() {
                 Razorpay + COD Settlement
               </span>
             </div>
-            <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
               <CreditCard className="w-6 h-6" />
             </div>
           </CardContent>
@@ -165,7 +165,7 @@ export default function AdminDashboardPage() {
               <h3 className="font-serif text-2xl font-bold text-zinc-950 mt-1">
                 {orders.length}
               </h3>
-              <span className="text-[11px] text-amber-700 font-medium mt-0.5 block">
+              <span className="text-[11px] text-orange-700 font-medium mt-0.5 block">
                 {pendingOrders.length} pending processing
               </span>
             </div>
@@ -184,11 +184,11 @@ export default function AdminDashboardPage() {
               <h3 className="font-serif text-2xl font-bold text-zinc-950 mt-1">
                 {sellers.length}
               </h3>
-              <span className="text-[11px] text-amber-700 font-semibold mt-0.5 block">
+              <span className="text-[11px] text-orange-700 font-semibold mt-0.5 block">
                 {pendingSellers.length} pending review
               </span>
             </div>
-            <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-xl bg-orange-50 text-orange-700 flex items-center justify-center">
               <Store className="w-6 h-6" />
             </div>
           </CardContent>
@@ -220,7 +220,7 @@ export default function AdminDashboardPage() {
         <div className="lg:col-span-6 bg-white rounded-2xl border border-zinc-200/80 p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
             <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-amber-600" />
+              <Clock className="w-4 h-4 text-orange-600" />
               <h3 className="font-serif font-bold text-base text-zinc-950">
                 Pending Seller Applications ({pendingSellers.length})
               </h3>

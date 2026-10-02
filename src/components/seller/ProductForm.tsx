@@ -281,7 +281,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({
             <div
               key={idx}
               className={`relative aspect-square rounded-xl overflow-hidden border bg-zinc-100 group ${
-                img.isPrimary ? 'border-amber-600 ring-2 ring-amber-600/20' : 'border-zinc-200'
+                img.isPrimary ? 'border-orange-600 ring-2 ring-orange-600/20' : 'border-zinc-200'
               }`}
             >
               <Image
@@ -297,7 +297,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSetPrimaryImage(idx)}
-                    className="p-1.5 rounded-full bg-white text-zinc-900 hover:bg-amber-100 hover:text-amber-800 transition-colors"
+                    className="p-1.5 rounded-full bg-white text-zinc-900 hover:bg-orange-100 hover:text-orange-800 transition-colors"
                     title="Set as Primary"
                   >
                     <Star className="w-3.5 h-3.5" />
@@ -314,7 +314,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({
               </div>
 
               {img.isPrimary && (
-                <div className="absolute top-2 left-2 bg-zinc-900/90 text-amber-400 text-[10px] font-bold px-2 py-0.5 rounded shadow-xs">
+                <div className="absolute top-2 left-2 bg-zinc-900/90 text-orange-400 text-[10px] font-bold px-2 py-0.5 rounded shadow-xs">
                   Primary
                 </div>
               )}

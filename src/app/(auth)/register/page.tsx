@@ -4,6 +4,7 @@ import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
+import { getRoleHome, getSafeRedirect } from '@/lib/auth/redirect';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Mail, Lock, User, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
@@ -11,7 +12,9 @@ import { Mail, Lock, User, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-reac
 function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/account/profile';
+  const requestedRedirect = searchParams.get('redirect');
+  const redirect = getSafeRedirect(requestedRedirect);
+  const hasRequestedRedirect = Boolean(requestedRedirect && (redirect !== '/' || requestedRedirect === '/'));
 
   const { registerWithEmail, loginWithGoogle } = useAuth();
 
@@ -46,8 +49,8 @@ function RegisterForm() {
     setIsLoading(true);
 
     try {
-      await registerWithEmail(email, password, displayName);
-      router.push(redirect);
+      const role = await registerWithEmail(email, password, displayName);
+      router.push(hasRequestedRedirect ? redirect : getRoleHome(role));
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       if (code === 'auth/email-already-in-use') {
@@ -66,8 +69,8 @@ function RegisterForm() {
     setError(null);
     setIsLoading(true);
     try {
-      await loginWithGoogle();
-      router.push(redirect);
+      const role = await loginWithGoogle();
+      router.push(hasRequestedRedirect ? redirect : getRoleHome(role));
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       if (code !== 'auth/popup-closed-by-user') {
@@ -97,7 +100,7 @@ function RegisterForm() {
         type="button"
         onClick={handleGoogleSignup}
         disabled={isLoading}
-        className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-zinc-300 rounded-md shadow-2xs bg-white text-xs font-semibold text-zinc-700 hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-colors disabled:opacity-50"
+        className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-zinc-300 rounded-md shadow-2xs bg-white text-xs font-semibold text-zinc-700 hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-orange-500 transition-colors disabled:opacity-50"
       >
         <svg className="w-4 h-4" viewBox="0 0 24 24">
           <path
@@ -188,15 +191,15 @@ function RegisterForm() {
             type="checkbox"
             checked={agreeTerms}
             onChange={(e) => setAgreeTerms(e.target.checked)}
-            className="mt-0.5 rounded border-zinc-300 text-amber-600 focus:ring-amber-500"
+            className="mt-0.5 rounded border-zinc-300 text-orange-600 focus:ring-orange-500"
           />
           <label htmlFor="terms" className="text-xs text-zinc-600 leading-normal">
             I agree to the{' '}
-            <Link href="/terms" className="text-zinc-900 underline hover:text-amber-700">
+            <Link href="/terms" className="text-zinc-900 underline hover:text-orange-700">
               Terms of Service
             </Link>{' '}
             and{' '}
-            <Link href="/privacy" className="text-zinc-900 underline hover:text-amber-700">
+            <Link href="/privacy" className="text-zinc-900 underline hover:text-orange-700">
               Privacy Policy
             </Link>.
           </label>
@@ -217,7 +220,7 @@ function RegisterForm() {
         Already have an account?{' '}
         <Link
           href={`/login?redirect=${encodeURIComponent(redirect)}`}
-          className="font-semibold text-zinc-900 hover:text-amber-700 transition-colors underline"
+          className="font-semibold text-zinc-900 hover:text-orange-700 transition-colors underline"
         >
           Sign in
         </Link>
@@ -231,7 +234,7 @@ export default function RegisterPage() {
     <Suspense
       fallback={
         <div className="flex items-center justify-center p-8">
-          <Loader2 className="w-6 h-6 animate-spin text-amber-600" />
+          <Loader2 className="w-6 h-6 animate-spin text-orange-600" />
         </div>
       }
     >

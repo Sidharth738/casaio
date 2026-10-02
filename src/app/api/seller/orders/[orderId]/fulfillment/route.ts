@@ -1,16 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import type { FulfillmentStatus, OrderStatus, OrderItem } from '@/types';
+import { requireServerRole } from '@/lib/firebase/server-auth';
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const user = await requireServerRole(req, ['seller', 'admin']);
+    if (!user) return NextResponse.json({ error: 'Seller access required' }, { status: 403 });
     const { orderId } = await params;
     const body = await req.json();
     const {
-      sellerId,
       productId,
       fulfillmentStatus,
       carrier,
@@ -18,12 +20,16 @@ export async function POST(
       trackingUrl,
       estimatedDelivery,
     } = body;
+    const sellerId = user.uid;
 
     if (!sellerId || !fulfillmentStatus) {
       return NextResponse.json(
         { error: 'Seller ID and fulfillment status are required' },
         { status: 400 }
       );
+    }
+    if (!['pending', 'processing', 'shipped', 'delivered', 'cancelled'].includes(fulfillmentStatus)) {
+      return NextResponse.json({ error: 'Invalid fulfillment status' }, { status: 400 });
     }
 
     const orderRef = adminDb.collection('orders').doc(orderId);

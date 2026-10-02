@@ -4,6 +4,7 @@ import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
+import { getRoleHome, getSafeRedirect } from '@/lib/auth/redirect';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
@@ -11,7 +12,9 @@ import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = searchParams.get('redirect') || '/account/profile';
+  const requestedRedirect = searchParams.get('redirect');
+  const redirect = getSafeRedirect(requestedRedirect);
+  const hasRequestedRedirect = Boolean(requestedRedirect && (redirect !== '/' || requestedRedirect === '/'));
 
   const { loginWithEmail, loginWithGoogle } = useAuth();
 
@@ -27,8 +30,8 @@ function LoginForm() {
     setIsLoading(true);
 
     try {
-      await loginWithEmail(email, password);
-      router.push(redirect);
+      const role = await loginWithEmail(email, password);
+      router.push(hasRequestedRedirect ? redirect : getRoleHome(role));
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
@@ -47,8 +50,8 @@ function LoginForm() {
     setError(null);
     setIsLoading(true);
     try {
-      await loginWithGoogle();
-      router.push(redirect);
+      const role = await loginWithGoogle();
+      router.push(hasRequestedRedirect ? redirect : getRoleHome(role));
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       if (code !== 'auth/popup-closed-by-user') {
@@ -78,7 +81,7 @@ function LoginForm() {
         type="button"
         onClick={handleGoogleLogin}
         disabled={isLoading}
-        className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-zinc-300 rounded-md shadow-2xs bg-white text-xs font-semibold text-zinc-700 hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-colors disabled:opacity-50"
+        className="w-full flex items-center justify-center gap-3 py-2.5 px-4 border border-zinc-300 rounded-md shadow-2xs bg-white text-xs font-semibold text-zinc-700 hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-orange-500 transition-colors disabled:opacity-50"
       >
         <svg className="w-4 h-4" viewBox="0 0 24 24">
           <path
@@ -147,7 +150,7 @@ function LoginForm() {
           <div className="flex items-center justify-end mt-1.5">
             <Link
               href="/forgot-password"
-              className="text-xs font-medium text-amber-700 hover:text-amber-800 transition-colors"
+              className="text-xs font-medium text-orange-700 hover:text-orange-800 transition-colors"
             >
               Forgot password?
             </Link>
@@ -169,7 +172,7 @@ function LoginForm() {
         Don&apos;t have an account yet?{' '}
         <Link
           href={`/register?redirect=${encodeURIComponent(redirect)}`}
-          className="font-semibold text-zinc-900 hover:text-amber-700 transition-colors underline"
+          className="font-semibold text-zinc-900 hover:text-orange-700 transition-colors underline"
         >
           Create account
         </Link>
@@ -183,7 +186,7 @@ export default function LoginPage() {
     <Suspense
       fallback={
         <div className="flex items-center justify-center p-8">
-          <Loader2 className="w-6 h-6 animate-spin text-amber-600" />
+          <Loader2 className="w-6 h-6 animate-spin text-orange-600" />
         </div>
       }
     >

@@ -158,7 +158,7 @@ export default function SellerProductsPage() {
       {/* Products Table or State */}
       {loading ? (
         <div className="py-20 flex flex-col items-center justify-center text-zinc-400">
-          <Loader2 className="w-8 h-8 animate-spin mb-3 text-amber-600" />
+          <Loader2 className="w-8 h-8 animate-spin mb-3 text-orange-600" />
           <p className="text-xs">Loading atelier catalog...</p>
         </div>
       ) : filteredProducts.length === 0 ? (
@@ -226,7 +226,7 @@ export default function SellerProductsPage() {
                             <Link
                               href={`/products/${p.slug}`}
                               target="_blank"
-                              className="font-medium text-zinc-900 hover:text-amber-700 transition-colors truncate block"
+                              className="font-medium text-zinc-900 hover:text-orange-700 transition-colors truncate block"
                             >
                               {p.title}
                             </Link>
@@ -269,7 +269,7 @@ export default function SellerProductsPage() {
                           {isLow && (
                             <span
                               title={`Low stock alert! Below threshold of ${p.lowStockThreshold}`}
-                              className="text-amber-600"
+                              className="text-orange-600"
                             >
                               <AlertTriangle className="w-4 h-4" />
                             </span>

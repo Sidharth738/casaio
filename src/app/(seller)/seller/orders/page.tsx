@@ -117,7 +117,7 @@ export default function SellerOrdersPage() {
       {/* Orders List */}
       {loading ? (
         <div className="py-20 flex flex-col items-center justify-center text-zinc-400">
-          <Loader2 className="w-8 h-8 animate-spin mb-3 text-amber-600" />
+          <Loader2 className="w-8 h-8 animate-spin mb-3 text-orange-600" />
           <p className="text-xs">Loading orders...</p>
         </div>
       ) : filteredOrders.length === 0 ? (
@@ -164,7 +164,7 @@ export default function SellerOrdersPage() {
                       <td className="py-4 px-4 sm:px-6">
                         <Link
                           href={`/seller/orders/${o.id}`}
-                          className="font-mono font-bold text-zinc-900 hover:text-amber-700 transition-colors"
+                          className="font-mono font-bold text-zinc-900 hover:text-orange-700 transition-colors"
                         >
                           {o.orderNumber}
                         </Link>

@@ -3,6 +3,20 @@ import { adminAuth, adminDb } from '@/lib/firebase/admin';
 
 export async function POST(request: NextRequest) {
   try {
+    const hasServiceAccountKey = Boolean(
+      process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY
+    );
+    const hasCredentialFile = Boolean(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+    if (!hasServiceAccountKey && !hasCredentialFile && process.env.NODE_ENV !== 'production') {
+      return NextResponse.json(
+        {
+          error:
+            'Firebase Admin credentials are missing. Set FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in .env.local, or configure GOOGLE_APPLICATION_CREDENTIALS, then restart the dev server.',
+        },
+        { status: 503 }
+      );
+    }
+
     const { idToken } = await request.json();
 
     if (!idToken) {
@@ -41,13 +55,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Prepare session payload
-    const sessionData = {
-      uid,
-      email,
-      role,
-      token: idToken,
-    };
+    if (userDoc.data()?.status === 'suspended') {
+      return NextResponse.json({ error: 'Account is suspended' }, { status: 403 });
+    }
+
+    const sessionCookie = await adminAuth.createSessionCookie(idToken, {
+      expiresIn: 1000 * 60 * 60 * 24 * 5,
+    });
 
     const response = NextResponse.json({
       success: true,
@@ -57,12 +71,12 @@ export async function POST(request: NextRequest) {
     // Set secure HTTP-only cookie for Edge Middleware access
     response.cookies.set({
       name: 'casaio_session',
-      value: JSON.stringify(sessionData),
+      value: sessionCookie,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: 60 * 60 * 24 * 5,
     });
 
     return response;
