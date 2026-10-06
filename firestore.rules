@@ -14,7 +14,8 @@ service cloud.firestore {
     }
 
     function isAuthenticated() {
-      return request.auth != null && (
+      return request.auth != null &&
+        request.auth.token.email_verified == true && (
         !exists(/databases/$(database)/documents/users/$(request.auth.uid)) ||
         getUserData().status != 'suspended'
       );

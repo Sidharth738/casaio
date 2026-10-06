@@ -26,6 +26,7 @@ function RegisterForm() {
   const [agreeTerms, setAgreeTerms] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,8 +50,8 @@ function RegisterForm() {
     setIsLoading(true);
 
     try {
-      const role = await registerWithEmail(email, password, displayName);
-      router.push(hasRequestedRedirect ? redirect : getRoleHome(role));
+      await registerWithEmail(email, password, displayName);
+      setVerificationEmail(email);
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       if (code === 'auth/email-already-in-use') {
@@ -88,6 +89,23 @@ function RegisterForm() {
         <p className="mt-1 text-xs text-zinc-500">Create your account to unlock curated drops and order tracking</p>
       </div>
 
+      {verificationEmail && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+          <h3 className="font-semibold">Check your email</h3>
+          <p className="mt-1">
+            We sent a verification link to <strong>{verificationEmail}</strong>. Open it to verify your address,
+            then sign in to your account.
+          </p>
+          <Link
+            href={`/login?redirect=${encodeURIComponent(redirect)}`}
+            className="mt-3 inline-block font-semibold underline"
+          >
+            Continue to sign in
+          </Link>
+        </div>
+      )}
+
+      {!verificationEmail && <>
       {error && (
         <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 animate-fade-in">
           <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
@@ -225,6 +243,7 @@ function RegisterForm() {
           Sign in
         </Link>
       </div>
+      </>}
     </div>
   );
 }

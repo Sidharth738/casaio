@@ -11,6 +11,7 @@ import {
   sendPasswordResetEmail,
   onAuthStateChanged,
   updateProfile,
+  sendEmailVerification,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase/client';
@@ -23,7 +24,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   loginWithEmail: (email: string, pass: string) => Promise<UserRole>;
-  registerWithEmail: (email: string, pass: string, name: string) => Promise<UserRole>;
+  registerWithEmail: (email: string, pass: string, name: string) => Promise<void>;
   loginWithGoogle: () => Promise<UserRole>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -109,6 +110,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       setIsLoading(true);
       if (fbUser) {
+        const isUnverifiedPasswordUser =
+          !fbUser.emailVerified && fbUser.providerData.some((provider) => provider.providerId === 'password');
+        if (isUnverifiedPasswordUser) {
+          setFirebaseUser(null);
+          setUser(null);
+          setRole('customer');
+          try {
+            await syncServerSession(null);
+          } catch (error) {
+            console.error('Error clearing server session for unverified user:', error);
+          }
+          setIsLoading(false);
+          return;
+        }
+
         setFirebaseUser(fbUser);
         try {
           const profile = await fetchUserProfile(fbUser);
@@ -142,6 +158,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     try {
       const cred = await signInWithEmailAndPassword(auth, email, pass);
+      if (!cred.user.emailVerified) {
+        await sendEmailVerification(cred.user, {
+          url: `${window.location.origin}/login?verified=1`,
+          handleCodeInApp: false,
+        });
+        await signOut(auth);
+        const error = new Error('Please verify your email. We sent you a fresh verification link.') as Error & { code: string };
+        error.code = 'auth/email-not-verified';
+        throw error;
+      }
       const profile = await fetchUserProfile(cred.user);
       setUser(profile);
       setRole(profile.role);
@@ -152,28 +178,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const registerWithEmail = async (email: string, pass: string, displayName: string): Promise<UserRole> => {
+  const registerWithEmail = async (email: string, pass: string, displayName: string): Promise<void> => {
     setIsLoading(true);
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
       await updateProfile(cred.user, { displayName });
 
-      const now = new Date().toISOString();
-      const profile: UserProfile = {
-        uid: cred.user.uid,
-        email,
-        displayName,
-        role: 'customer',
-        status: 'active',
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      await setDoc(doc(db, 'users', cred.user.uid), profile);
-      setUser(profile);
+      await sendEmailVerification(cred.user, {
+        url: `${window.location.origin}/login?verified=1`,
+        handleCodeInApp: false,
+      });
+      setUser(null);
+      setFirebaseUser(null);
       setRole('customer');
-      await establishSession(cred.user);
-      return 'customer';
+      await signOut(auth);
     } finally {
       setIsLoading(false);
     }

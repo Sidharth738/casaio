@@ -17,6 +17,7 @@ function LoginForm() {
   const hasRequestedRedirect = Boolean(requestedRedirect && (redirect !== '/' || requestedRedirect === '/'));
 
   const { loginWithEmail, loginWithGoogle } = useAuth();
+  const emailVerified = searchParams.get('verified') === '1';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -38,6 +39,8 @@ function LoginForm() {
         setError('Invalid email or password. Please verify and try again.');
       } else if (code === 'auth/too-many-requests') {
         setError('Too many failed attempts. Please reset your password or try again later.');
+      } else if (code === 'auth/email-not-verified') {
+        setError('Your email is not verified yet. We sent a new verification link; check your inbox and spam folder.');
       } else {
         setError((err as Error).message || 'Failed to sign in. Please try again.');
       }
@@ -73,6 +76,12 @@ function LoginForm() {
         <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 animate-fade-in">
           <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
           <span>{error}</span>
+        </div>
+      )}
+
+      {emailVerified && !error && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">
+          Email verified. You can now sign in.
         </div>
       )}
 

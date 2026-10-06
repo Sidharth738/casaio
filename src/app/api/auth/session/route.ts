@@ -27,6 +27,14 @@ export async function POST(request: NextRequest) {
     const decodedToken = await adminAuth.verifyIdToken(idToken);
     const { uid, email, name, picture } = decodedToken;
 
+    if (
+      decodedToken.firebase.sign_in_provider === 'password' &&
+      email &&
+      decodedToken.email_verified !== true
+    ) {
+      return NextResponse.json({ error: 'Verify your email before signing in.' }, { status: 403 });
+    }
+
     // Fetch user document from Firestore to ensure consistent role resolution
     const userDocRef = adminDb.collection('users').doc(uid);
     const userDoc = await userDocRef.get();
