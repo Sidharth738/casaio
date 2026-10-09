@@ -27,24 +27,35 @@ export async function POST(request: NextRequest) {
     const decodedToken = await adminAuth.verifyIdToken(idToken);
     const { uid, email, name, picture } = decodedToken;
 
-    if (
-      decodedToken.firebase.sign_in_provider === 'password' &&
-      email &&
-      decodedToken.email_verified !== true
-    ) {
-      return NextResponse.json({ error: 'Verify your email before signing in.' }, { status: 403 });
-    }
-
     // Fetch user document from Firestore to ensure consistent role resolution
     const userDocRef = adminDb.collection('users').doc(uid);
     const userDoc = await userDocRef.get();
 
-    let role = (decodedToken.role as string) || 'customer';
+    const role = userDoc.exists
+      ? (userDoc.data()?.role as string) || 'customer'
+      : 'customer';
+
+    if (userDoc.data()?.status === 'suspended') {
+      return NextResponse.json({ error: 'Account is suspended' }, { status: 403 });
+    }
+
+    // Only an existing admin profile can bypass email verification. Never
+    // create a profile for an unverified password account.
+    if (
+      decodedToken.firebase.sign_in_provider === 'password' &&
+      decodedToken.email_verified !== true &&
+      (!userDoc.exists || role !== 'admin')
+    ) {
+      return NextResponse.json(
+        { code: 'auth/email-not-verified', error: 'Verify your email before signing in.' },
+        { status: 403 }
+      );
+    }
 
     if (!userDoc.exists) {
-      // First-time social sign-in or missing doc: initialize user document
+      // First-time social sign-in or missing verified user profile.
       const now = new Date().toISOString();
-      const newUser = {
+      await userDocRef.set({
         uid,
         email: email || '',
         displayName: name || email?.split('@')[0] || 'Customer',
@@ -53,18 +64,7 @@ export async function POST(request: NextRequest) {
         status: 'active',
         createdAt: now,
         updatedAt: now,
-      };
-      await userDocRef.set(newUser);
-      role = 'customer';
-    } else {
-      const data = userDoc.data();
-      if (data?.role) {
-        role = data.role;
-      }
-    }
-
-    if (userDoc.data()?.status === 'suspended') {
-      return NextResponse.json({ error: 'Account is suspended' }, { status: 403 });
+      });
     }
 
     const sessionCookie = await adminAuth.createSessionCookie(idToken, {

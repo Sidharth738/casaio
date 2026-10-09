@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import {
   User,
   signInWithEmailAndPassword,
@@ -38,6 +38,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<UserProfile | null>(null);
   const [role, setRole] = useState<UserRole>('customer');
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const emailLoginInProgress = useRef(false);
 
   // Sync token with server session cookie
   const syncServerSession = useCallback(async (fbUser: User | null) => {
@@ -50,8 +51,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
       if (!response.ok) {
         const data = await response.json().catch(() => null);
-        throw new Error(data?.error || 'Could not establish a secure session. Please try again.');
+        const error = new Error(data?.error || 'Could not establish a secure session. Please try again.') as Error & { code?: string };
+        error.code = data?.code;
+        throw error;
       }
+      return await response.json() as { success: boolean; user: { uid: string; email: string | null; role: UserRole } };
     } else {
       const response = await fetch('/api/auth/logout', { method: 'POST' });
       if (!response.ok) throw new Error('Could not end the server session. Please try again.');
@@ -112,31 +116,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (fbUser) {
         const isUnverifiedPasswordUser =
           !fbUser.emailVerified && fbUser.providerData.some((provider) => provider.providerId === 'password');
-        if (isUnverifiedPasswordUser) {
-          setFirebaseUser(null);
-          setUser(null);
-          setRole('customer');
-          try {
-            await syncServerSession(null);
-          } catch (error) {
-            console.error('Error clearing server session for unverified user:', error);
-          }
+        if (isUnverifiedPasswordUser && emailLoginInProgress.current) {
+          // The login action is checking this account against its trusted
+          // server-side profile; avoid racing it by signing out here.
           setIsLoading(false);
           return;
         }
-
         setFirebaseUser(fbUser);
         try {
+          // The server decides whether an unverified password user has an
+          // existing admin profile. This also establishes the session cookie.
+          if (isUnverifiedPasswordUser) await syncServerSession(fbUser);
           const profile = await fetchUserProfile(fbUser);
           setUser(profile);
           setRole(profile.role);
-          await syncServerSession(fbUser);
+          if (!isUnverifiedPasswordUser) await syncServerSession(fbUser);
         } catch (error) {
           // Session service configuration/network failures are recoverable and
           // should be shown by the login form, not promoted to Next's error overlay.
           console.warn('Unable to initialize the signed-in session:', error);
           setUser(null);
+          setFirebaseUser(null);
           setRole('customer');
+          try {
+            await signOut(auth);
+            await syncServerSession(null);
+          } catch (clearError) {
+            console.error('Unable to clear rejected authentication state:', clearError);
+          }
         }
       } else {
         setFirebaseUser(null);
@@ -156,17 +163,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginWithEmail = async (email: string, pass: string) => {
     setIsLoading(true);
+    emailLoginInProgress.current = true;
     try {
       const cred = await signInWithEmailAndPassword(auth, email, pass);
       if (!cred.user.emailVerified) {
-        await sendEmailVerification(cred.user, {
-          url: `${window.location.origin}/login?verified=1`,
-          handleCodeInApp: false,
-        });
-        await signOut(auth);
-        const error = new Error('Please verify your email. We sent you a fresh verification link.') as Error & { code: string };
-        error.code = 'auth/email-not-verified';
-        throw error;
+        try {
+          const session = await syncServerSession(cred.user);
+          const profile = await fetchUserProfile(cred.user);
+          if (session?.user.role !== 'admin' || profile.role !== 'admin') {
+            throw Object.assign(new Error('Verify your email before signing in.'), { code: 'auth/email-not-verified' });
+          }
+          setUser(profile);
+          setFirebaseUser(cred.user);
+          setRole('admin');
+          return 'admin';
+        } catch (cause) {
+          const code = (cause as { code?: string })?.code;
+          await signOut(auth);
+          try { await syncServerSession(null); } catch (clearError) {
+            console.error('Unable to clear rejected login session:', clearError);
+          }
+          if (code === 'auth/email-not-verified') {
+            try {
+              await sendEmailVerification(cred.user, {
+                url: `${window.location.origin}/login?verified=1`,
+                handleCodeInApp: false,
+              });
+            } catch (emailError) {
+              console.error('Unable to send verification email:', emailError);
+            }
+            const error = new Error('Please verify your email. We sent you a fresh verification link.') as Error & { code: string };
+            error.code = 'auth/email-not-verified';
+            throw error;
+          }
+          const error = new Error('Your credentials are valid, but we could not establish your secure session. Please try again.') as Error & { code: string; cause?: unknown };
+          error.code = 'auth/session-creation-failed';
+          error.cause = cause;
+          throw error;
+        }
       }
       let profile: UserProfile;
       try {
@@ -189,6 +223,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return profile.role;
     } finally {
+      emailLoginInProgress.current = false;
       setIsLoading(false);
     }
   };

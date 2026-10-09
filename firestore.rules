@@ -34,7 +34,12 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return hasRole('admin');
+      // Admin status is assigned through trusted server tooling. Admins can
+      // access admin data without email verification; other roles still need
+      // a verified email through isAuthenticated().
+      return request.auth != null &&
+        getUserData().role == 'admin' &&
+        getUserData().status != 'suspended';
     }
 
     function isSeller() {

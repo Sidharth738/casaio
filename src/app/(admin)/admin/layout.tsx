@@ -57,7 +57,7 @@ export default function AdminPortalLayout({
               Admin Privilege Required
             </h2>
             <p className="text-xs text-zinc-500 mt-2 leading-relaxed">
-              This command interface requires verified platform administrator credentials. Signed in as{' '}
+              This command interface requires active platform administrator credentials. Signed in as{' '}
               <strong className="text-zinc-900">{user?.email || 'Guest'}</strong> (Role: {role}).
             </p>
           </div>
