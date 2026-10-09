@@ -22,8 +22,28 @@ export async function POST(request: NextRequest) {
   try {
     const event = JSON.parse(rawBody) as {
       event?: string;
-      payload?: { payment?: { entity?: { id?: string; order_id?: string; amount?: number; currency?: string; error_description?: string } } };
+      payload?: {
+        payment?: { entity?: { id?: string; order_id?: string; amount?: number; currency?: string; error_description?: string } };
+        refund?: { entity?: { id?: string; payment_id?: string } };
+      };
     };
+
+    const refund = event.payload?.refund?.entity;
+    if ((event.event === 'refund.processed' || event.event === 'refund.failed') && refund?.id && refund.payment_id) {
+      const matchingOrders = await adminDb.collection('orders')
+        .where('payment.razorpayPaymentId', '==', refund.payment_id)
+        .limit(1)
+        .get();
+      const order = matchingOrders.docs[0];
+      if (order?.data().payment?.razorpayRefundId === refund.id) {
+        await order.ref.update({
+          'payment.status': event.event === 'refund.processed' ? 'refunded' : 'refund_failed',
+          updatedAt: new Date().toISOString(),
+        });
+      }
+      return NextResponse.json({ received: true });
+    }
+
     const payment = event.payload?.payment?.entity;
     if (!payment?.order_id || !payment.id) return NextResponse.json({ received: true });
 

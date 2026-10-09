@@ -27,6 +27,8 @@ function RegisterForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
+  const [verificationEmailSent, setVerificationEmailSent] = useState(true);
+  const [profileSaved, setProfileSaved] = useState(true);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,8 +52,10 @@ function RegisterForm() {
     setIsLoading(true);
 
     try {
-      await registerWithEmail(email, password, displayName);
+      const result = await registerWithEmail(email, password, displayName);
       setVerificationEmail(email);
+      setVerificationEmailSent(result.verificationEmailSent);
+      setProfileSaved(result.profileSaved);
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       if (code === 'auth/email-already-in-use') {
@@ -69,14 +73,22 @@ function RegisterForm() {
   const handleGoogleSignup = async () => {
     setError(null);
     setIsLoading(true);
+    let role: string;
     try {
-      const role = await loginWithGoogle();
-      router.push(hasRequestedRedirect ? redirect : getRoleHome(role));
+      role = await loginWithGoogle();
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       if (code !== 'auth/popup-closed-by-user') {
         setError((err as Error).message || 'Google registration was interrupted. Please try again.');
       }
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      router.push(hasRequestedRedirect ? redirect : getRoleHome(role));
+    } catch {
+      setError('You are signed in, but we could not open the next page. Please use the site navigation to continue.');
     } finally {
       setIsLoading(false);
     }
@@ -91,11 +103,17 @@ function RegisterForm() {
 
       {verificationEmail && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-          <h3 className="font-semibold">Check your email</h3>
+          <h3 className="font-semibold">Account created</h3>
           <p className="mt-1">
-            We sent a verification link to <strong>{verificationEmail}</strong>. Open it to verify your address,
-            then sign in to your account.
+            {verificationEmailSent ? (
+              <>We sent a verification link to <strong>{verificationEmail}</strong>. Open it to verify your address, then sign in.</>
+            ) : (
+              <>Your account was created, but we couldn&apos;t send the verification email. Continue to sign in and we&apos;ll send another link.</>
+            )}
           </p>
+          {!profileSaved && (
+            <p className="mt-2">Your account was created, but we couldn&apos;t save your name. You can update it after signing in.</p>
+          )}
           <Link
             href={`/login?redirect=${encodeURIComponent(redirect)}`}
             className="mt-3 inline-block font-semibold underline"

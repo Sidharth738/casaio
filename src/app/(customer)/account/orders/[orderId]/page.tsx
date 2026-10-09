@@ -12,6 +12,7 @@ import {
   ShoppingBag,
   Truck,
   Loader2,
+  XCircle,
 } from 'lucide-react';
 import type { Order } from '@/types';
 import { getOrderById } from '@/lib/firebase/firestore';
@@ -25,6 +26,9 @@ export default function OrderDetailPage() {
 
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancellationMessage, setCancellationMessage] = useState<string | null>(null);
+  const [cancellationError, setCancellationError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchOrder() {
@@ -42,6 +46,42 @@ export default function OrderDetailPage() {
 
     fetchOrder();
   }, [orderId]);
+
+  const canCancel = Boolean(
+    order &&
+    ['pending', 'confirmed', 'processing'].includes(order.orderStatus) &&
+    order.items.length > 0 &&
+    order.items.every((item) => item.fulfillmentStatus === 'pending') &&
+    ((order.payment.method === 'cod' && order.payment.status === 'pending') ||
+      (order.payment.method === 'razorpay' && order.payment.status === 'captured' && order.payment.razorpayPaymentId))
+  );
+
+  const handleCancelOrder = async () => {
+    if (!order || !canCancel) return;
+    const confirmed = window.confirm(
+      order.payment.method === 'razorpay'
+        ? 'Cancel this order? A refund will be sent to your original payment method.'
+        : 'Cancel this order?'
+    );
+    if (!confirmed) return;
+
+    setCancelling(true);
+    setCancellationError(null);
+    setCancellationMessage(null);
+    try {
+      const response = await fetch(`/api/orders/${order.id}/cancel`, { method: 'POST' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Could not cancel this order.');
+
+      setCancellationMessage(data.message || 'Order cancelled successfully.');
+      const updatedOrder = await getOrderById(order.id);
+      setOrder(updatedOrder);
+    } catch (error) {
+      setCancellationError(error instanceof Error ? error.message : 'Could not cancel this order.');
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -105,6 +145,32 @@ export default function OrderDetailPage() {
           </span>
         </div>
       </div>
+
+      {cancellationError && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {cancellationError}
+        </div>
+      )}
+      {cancellationMessage && (
+        <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {cancellationMessage}
+        </div>
+      )}
+      {canCancel && (
+        <div className="flex justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={cancelling}
+            isLoading={cancelling}
+            leftIcon={!cancelling ? <XCircle className="w-4 h-4" /> : undefined}
+            onClick={handleCancelOrder}
+          >
+            Cancel Order
+          </Button>
+        </div>
+      )}
 
       {/* Shipment & Timeline Section */}
       <div className="rounded-xl border border-zinc-200/80 bg-zinc-50/50 p-6 space-y-4">
@@ -234,7 +300,11 @@ export default function OrderDetailPage() {
               <div className="flex justify-between">
                 <span className="text-zinc-500">Status</span>
                 <span className="capitalize font-medium text-emerald-700">
-                  {order.payment.status}
+                  {order.payment.status === 'refund_pending'
+                    ? 'Refund processing'
+                    : order.payment.status === 'refund_failed'
+                      ? 'Refund failed — contact support'
+                      : order.payment.status}
                 </span>
               </div>
               {order.payment.razorpayPaymentId && (

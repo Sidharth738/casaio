@@ -24,7 +24,7 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   loginWithEmail: (email: string, pass: string) => Promise<UserRole>;
-  registerWithEmail: (email: string, pass: string, name: string) => Promise<void>;
+  registerWithEmail: (email: string, pass: string, name: string) => Promise<{ verificationEmailSent: boolean; profileSaved: boolean }>;
   loginWithGoogle: () => Promise<UserRole>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -168,30 +168,74 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         error.code = 'auth/email-not-verified';
         throw error;
       }
-      const profile = await fetchUserProfile(cred.user);
+      let profile: UserProfile;
+      try {
+        profile = await fetchUserProfile(cred.user);
+      } catch (cause) {
+        const error = new Error('Your credentials are valid, but we could not load your user profile. Please try again.') as Error & { code: string; cause?: unknown };
+        error.code = 'auth/profile-initialization-failed';
+        error.cause = cause;
+        throw error;
+      }
       setUser(profile);
       setRole(profile.role);
-      await establishSession(cred.user);
+      try {
+        await establishSession(cred.user);
+      } catch (cause) {
+        const error = new Error('Your credentials are valid, but we could not establish your secure session. Please try again.') as Error & { code: string; cause?: unknown };
+        error.code = 'auth/session-creation-failed';
+        error.cause = cause;
+        throw error;
+      }
       return profile.role;
     } finally {
       setIsLoading(false);
     }
   };
 
-  const registerWithEmail = async (email: string, pass: string, displayName: string): Promise<void> => {
+  const registerWithEmail = async (
+    email: string,
+    pass: string,
+    displayName: string
+  ): Promise<{ verificationEmailSent: boolean; profileSaved: boolean }> => {
     setIsLoading(true);
     try {
+      // This is the only step that determines whether registration itself failed.
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
-      await updateProfile(cred.user, { displayName });
 
-      await sendEmailVerification(cred.user, {
-        url: `${window.location.origin}/login?verified=1`,
-        handleCodeInApp: false,
-      });
+      // Follow-up operations can fail after Firebase has permanently created the account.
+      // Report those outcomes separately so the UI never suggests the account is absent.
+      let profileSaved = true;
+      try {
+        await updateProfile(cred.user, { displayName });
+      } catch (error) {
+        profileSaved = false;
+        console.error('Account created, but the Firebase display name could not be saved:', error);
+      }
+
+      let verificationEmailSent = true;
+      try {
+        await sendEmailVerification(cred.user, {
+          url: `${window.location.origin}/login?verified=1`,
+          handleCodeInApp: false,
+        });
+      } catch (error) {
+        verificationEmailSent = false;
+        console.error('Account created, but the verification email could not be sent:', error);
+      }
+
       setUser(null);
       setFirebaseUser(null);
       setRole('customer');
-      await signOut(auth);
+      try {
+        await signOut(auth);
+      } catch (error) {
+        // The account and verification result are still valid; onAuthStateChanged
+        // will reconcile local state if sign-out cannot complete immediately.
+        console.error('Account created, but the temporary registration session could not be cleared:', error);
+      }
+
+      return { verificationEmailSent, profileSaved };
     } finally {
       setIsLoading(false);
     }
@@ -202,10 +246,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const provider = new GoogleAuthProvider();
       const cred = await signInWithPopup(auth, provider);
-      const profile = await fetchUserProfile(cred.user);
+      let profile: UserProfile;
+      try {
+        profile = await fetchUserProfile(cred.user);
+      } catch (cause) {
+        const error = new Error('Google sign-in succeeded, but we could not load your user profile. Please try again.') as Error & { code: string; cause?: unknown };
+        error.code = 'auth/profile-initialization-failed';
+        error.cause = cause;
+        throw error;
+      }
       setUser(profile);
       setRole(profile.role);
-      await establishSession(cred.user);
+      try {
+        await establishSession(cred.user);
+      } catch (cause) {
+        const error = new Error('Google sign-in succeeded, but we could not establish your secure session. Please try again.') as Error & { code: string; cause?: unknown };
+        error.code = 'auth/session-creation-failed';
+        error.cause = cause;
+        throw error;
+      }
       return profile.role;
     } finally {
       setIsLoading(false);

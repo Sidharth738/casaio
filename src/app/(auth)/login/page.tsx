@@ -30,9 +30,9 @@ function LoginForm() {
     setError(null);
     setIsLoading(true);
 
+    let role: string;
     try {
-      const role = await loginWithEmail(email, password);
-      router.push(hasRequestedRedirect ? redirect : getRoleHome(role));
+      role = await loginWithEmail(email, password);
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
@@ -41,9 +41,19 @@ function LoginForm() {
         setError('Too many failed attempts. Please reset your password or try again later.');
       } else if (code === 'auth/email-not-verified') {
         setError('Your email is not verified yet. We sent a new verification link; check your inbox and spam folder.');
+      } else if (code === 'auth/profile-initialization-failed' || code === 'auth/session-creation-failed') {
+        setError((err as Error).message);
       } else {
         setError((err as Error).message || 'Failed to sign in. Please try again.');
       }
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      router.push(hasRequestedRedirect ? redirect : getRoleHome(role));
+    } catch {
+      setError('You are signed in, but we could not open the next page. Please use the site navigation to continue.');
     } finally {
       setIsLoading(false);
     }
@@ -52,14 +62,22 @@ function LoginForm() {
   const handleGoogleLogin = async () => {
     setError(null);
     setIsLoading(true);
+    let role: string;
     try {
-      const role = await loginWithGoogle();
-      router.push(hasRequestedRedirect ? redirect : getRoleHome(role));
+      role = await loginWithGoogle();
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       if (code !== 'auth/popup-closed-by-user') {
         setError((err as Error).message || 'Google sign-in was interrupted. Please try again.');
       }
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      router.push(hasRequestedRedirect ? redirect : getRoleHome(role));
+    } catch {
+      setError('You are signed in, but we could not open the next page. Please use the site navigation to continue.');
     } finally {
       setIsLoading(false);
     }

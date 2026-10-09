@@ -42,6 +42,10 @@ export async function POST(
     const orderData = snap.data();
     const now = new Date().toISOString();
 
+    if (orderData?.orderStatus === 'cancelled' || orderData?.cancellationStatus === 'processing') {
+      return NextResponse.json({ error: 'This order is cancelled or being cancelled' }, { status: 409 });
+    }
+
     // Verify seller is part of this order
     if (
       !Array.isArray(orderData?.sellerIds) ||

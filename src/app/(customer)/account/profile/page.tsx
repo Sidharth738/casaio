@@ -1,13 +1,14 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
-import { User, Mail, Phone, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
+import { User, Mail, Phone, ShieldCheck, CheckCircle2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 
 export default function ProfilePage() {
@@ -46,11 +47,20 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h2 className="font-serif text-2xl font-bold text-zinc-950">Personal Profile</h2>
-        <p className="text-xs text-zinc-500 mt-1">
-          Manage your account contact details and authorization credentials.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <h2 className="font-serif text-2xl font-bold text-zinc-950">Personal Profile</h2>
+          <p className="text-xs text-zinc-500 mt-1">
+            Manage your account contact details and authorization credentials.
+          </p>
+        </div>
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 self-start rounded-md border border-zinc-200 px-3 py-2 text-xs font-semibold text-zinc-700 transition-colors hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-950"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Back to Home
+        </Link>
       </div>
 
       {successMessage && (
