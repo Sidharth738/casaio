@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { requireServerRole } from '@/lib/firebase/server-auth';
+import { getProductDeletionBlockReason } from '@/lib/products/deletion';
+import { revalidatePath } from 'next/cache';
 
 export async function PUT(
   req: NextRequest,
@@ -80,7 +82,15 @@ export async function DELETE(
       );
     }
 
+    const deletionBlockReason = await getProductDeletionBlockReason(id);
+    if (deletionBlockReason) {
+      return NextResponse.json({ error: deletionBlockReason }, { status: 409 });
+    }
+
     await docRef.delete();
+    revalidatePath('/', 'page');
+    revalidatePath('/products', 'page');
+    if (currentData?.slug) revalidatePath(`/products/${currentData.slug}`);
 
     return NextResponse.json({
       success: true,

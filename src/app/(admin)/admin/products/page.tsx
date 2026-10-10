@@ -11,6 +11,9 @@ import {
   ExternalLink,
   ShoppingBag,
   Loader2,
+  Pencil,
+  Archive,
+  Trash2,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import type { Product } from '@/types';
@@ -23,7 +26,7 @@ export default function AdminProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [isFetched, setIsFetched] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'draft' | 'featured'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'draft' | 'archived' | 'featured'>('all');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const loading = !isFetched && Boolean(user);
@@ -93,6 +96,29 @@ export default function AdminProductsPage() {
     }
   };
 
+  const handleArchive = async (product: Product) => {
+    const nextStatus = product.status === 'archived'
+      ? (product.stock > 0 ? 'active' : 'out_of_stock')
+      : 'archived';
+    await handleStatusChange(product.id, nextStatus);
+  };
+
+  const handleDelete = async (product: Product) => {
+    if (!window.confirm(`Permanently delete “${product.title}”? Products with order history or reviews can only be archived.`)) return;
+
+    try {
+      setActionLoading(product.id);
+      const response = await fetch(`/api/admin/products/${product.id}`, { method: 'DELETE' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to delete product');
+      setProducts((previous) => previous.filter((item) => item.id !== product.id));
+    } catch (error: unknown) {
+      alert(error instanceof Error ? error.message : 'Failed to delete product');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const filteredProducts = products.filter((p) => {
     const matchesSearch =
       p.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -102,6 +128,7 @@ export default function AdminProductsPage() {
     if (!matchesSearch) return false;
     if (statusFilter === 'active') return p.status === 'active';
     if (statusFilter === 'draft') return p.status === 'draft';
+    if (statusFilter === 'archived') return p.status === 'archived';
     if (statusFilter === 'featured') return p.isFeatured;
 
     return true;
@@ -146,7 +173,7 @@ export default function AdminProductsPage() {
         </div>
 
         <div className="flex items-center gap-1.5 overflow-x-auto text-xs">
-          {(['all', 'active', 'draft', 'featured'] as const).map((filter) => (
+          {(['all', 'active', 'draft', 'archived', 'featured'] as const).map((filter) => (
             <button
               key={filter}
               onClick={() => setStatusFilter(filter)}
@@ -284,7 +311,38 @@ export default function AdminProductsPage() {
                       </td>
 
                       {/* Action */}
-                      <td className="py-4 px-4 sm:pr-6 text-right">
+                      <td className="py-4 px-4 sm:pr-6">
+                        <div className="flex items-center justify-end gap-1">
+                          <Link
+                            href={`/admin/products/${p.id}/edit`}
+                            aria-label={`Edit ${p.title}`}
+                            title="Edit product"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-zinc-500 hover:bg-zinc-100 hover:text-zinc-950"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Link>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-zinc-500 hover:text-orange-700"
+                            title={p.status === 'archived' ? 'Restore to active' : 'Archive and remove from sale'}
+                            aria-label={p.status === 'archived' ? `Restore ${p.title}` : `Archive ${p.title}`}
+                            disabled={actionLoading === p.id}
+                            onClick={() => void handleArchive(p)}
+                          >
+                            <Archive className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-zinc-500 hover:text-red-700"
+                            title="Permanently delete if there is no order or review history"
+                            aria-label={`Permanently delete ${p.title}`}
+                            disabled={actionLoading === p.id}
+                            onClick={() => void handleDelete(p)}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
                         <Link href={`/products/${p.slug}`} target="_blank">
                           <Button
                             variant="ghost"
@@ -295,6 +353,7 @@ export default function AdminProductsPage() {
                             <ExternalLink className="w-3.5 h-3.5" />
                           </Button>
                         </Link>
+                        </div>
                       </td>
                     </tr>
                   );

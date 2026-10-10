@@ -18,12 +18,16 @@ interface ProductFormProps {
   initialProduct?: Product | null;
   onSubmit: (productData: Partial<Product>) => Promise<void>;
   isLoading?: boolean;
+  availableStatuses?: Product['status'][];
+  cancelHref?: string;
 }
 
 export const ProductForm: React.FC<ProductFormProps> = ({
   initialProduct,
   onSubmit,
   isLoading = false,
+  availableStatuses = ['active', 'draft'],
+  cancelHref = '/seller/products',
 }) => {
   const router = useRouter();
   const [categories, setCategories] = useState<Category[]>([]);
@@ -428,29 +432,24 @@ export const ProductForm: React.FC<ProductFormProps> = ({
           <label className="block text-xs font-medium text-zinc-700 mb-1.5">
             Publication Status
           </label>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="status"
-                value="active"
-                checked={status === 'active'}
-                onChange={() => setStatus('active')}
-                className="text-zinc-950"
-              />
-              <span className="text-xs text-zinc-800 font-medium">Active (Visible in Storefront)</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="radio"
-                name="status"
-                value="draft"
-                checked={status === 'draft'}
-                onChange={() => setStatus('draft')}
-                className="text-zinc-950"
-              />
-              <span className="text-xs text-zinc-800 font-medium">Draft (Hidden in Catalog)</span>
-            </label>
+          <div className="flex flex-wrap items-center gap-4">
+            {availableStatuses.map((availableStatus) => (
+              <label key={availableStatus} className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="status"
+                  value={availableStatus}
+                  checked={status === availableStatus}
+                  onChange={() => setStatus(availableStatus)}
+                  className="text-zinc-950"
+                />
+                <span className="text-xs text-zinc-800 font-medium">
+                  {availableStatus === 'active' ? 'Active (Visible in Storefront)' :
+                    availableStatus === 'draft' ? 'Draft (Hidden in Catalog)' :
+                      availableStatus === 'out_of_stock' ? 'Out of Stock' : 'Archived (Removed from Sale)'}
+                </span>
+              </label>
+            ))}
           </div>
         </div>
       </div>
@@ -461,7 +460,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({
           type="button"
           variant="outline"
           size="md"
-          onClick={() => router.push('/seller/products')}
+          onClick={() => router.push(cancelHref)}
           disabled={isLoading}
         >
           Cancel
