@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { Container } from '@/components/ui/Container';
 import { Badge } from '@/components/ui/Badge';
@@ -20,6 +20,7 @@ import {
   Loader2,
   Lock,
   MessageSquare,
+  LogOut,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Logo } from '@/components/common/Logo';
@@ -30,7 +31,20 @@ export default function AdminPortalLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const { user, role, isLoading } = useAuth();
+  const router = useRouter();
+  const { user, role, isLoading, logout } = useAuth();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    try {
+      setIsLoggingOut(true);
+      await logout();
+      router.replace('/login');
+    } catch {
+      alert('Could not log out. Please try again.');
+      setIsLoggingOut(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -113,6 +127,15 @@ export default function AdminPortalLayout({
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="inline-flex items-center gap-1.5 text-xs text-zinc-300 hover:text-white px-3 py-1.5 rounded-md hover:bg-zinc-900 transition-colors disabled:opacity-60"
+            >
+              {isLoggingOut ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
+              <span>{isLoggingOut ? 'Signing out…' : 'Log out'}</span>
+            </button>
             <Link
               href="/products"
               target="_blank"

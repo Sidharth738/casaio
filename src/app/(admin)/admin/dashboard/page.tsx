@@ -29,6 +29,8 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 export default function AdminDashboardPage() {
   const { user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [orderCount, setOrderCount] = useState<number | null>(null);
+  const [orderCountError, setOrderCountError] = useState(false);
   const [sellers, setSellers] = useState<SellerProfile[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -58,6 +60,13 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (!user) return;
+    fetch('/api/admin/orders/count')
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Could not load order count');
+        const data = await response.json() as { count: number };
+        setOrderCount(data.count);
+      })
+      .catch(() => setOrderCountError(true));
     loadData();
   }, [user]);
 
@@ -163,7 +172,7 @@ export default function AdminDashboardPage() {
                 Total Orders
               </p>
               <h3 className="font-serif text-2xl font-bold text-zinc-950 mt-1">
-                {orders.length}
+                {orderCount === null ? (orderCountError ? 'Unavailable' : '…') : orderCount}
               </h3>
               <span className="text-[11px] text-orange-700 font-medium mt-0.5 block">
                 {pendingOrders.length} pending processing
