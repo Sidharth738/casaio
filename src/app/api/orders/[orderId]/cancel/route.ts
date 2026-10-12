@@ -3,6 +3,7 @@ import Razorpay from 'razorpay';
 import { adminDb } from '@/lib/firebase/admin';
 import { requireServerUser } from '@/lib/firebase/server-auth';
 import type { OrderItem } from '@/types';
+import { getActivePaymentAttemptRef, getCheckoutCoordinationRef } from '@/lib/payment/attempts';
 
 const CANCELLABLE_STATUSES = ['pending', 'confirmed', 'processing'];
 
@@ -102,7 +103,11 @@ export async function POST(
 
         const items = current.items as OrderItem[];
         const productRefs = items.map((item) => adminDb.collection('products').doc(item.productId));
-        const productSnapshots = await Promise.all(productRefs.map((ref) => transaction.get(ref)));
+        const [productSnapshots, activeAttemptSnap, checkoutCoordinationSnap] = await Promise.all([
+          Promise.all(productRefs.map((ref) => transaction.get(ref))),
+          transaction.get(getActivePaymentAttemptRef(user.uid)),
+          transaction.get(getCheckoutCoordinationRef(user.uid)),
+        ]);
         for (let index = 0; index < productRefs.length; index++) {
           const product = productSnapshots[index];
           if (product.exists) {
@@ -135,6 +140,10 @@ export async function POST(
           ],
           updatedAt: now,
         });
+        const activeAttemptRef = getActivePaymentAttemptRef(user.uid);
+        if (activeAttemptSnap.data()?.orderId === orderId) transaction.delete(activeAttemptRef);
+        const checkoutCoordinationRef = getCheckoutCoordinationRef(user.uid);
+        if (checkoutCoordinationSnap.data()?.orderId === orderId) transaction.delete(checkoutCoordinationRef);
       });
     } catch (error) {
       // If Razorpay accepted a refund but Firestore completion failed, allow a retry.

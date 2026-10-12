@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import type { Category } from '@/types';
-import { getCategories } from '@/lib/firebase/firestore';
+import { getAllCategoriesAdmin } from '@/lib/firebase/firestore';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
@@ -40,7 +40,7 @@ export default function AdminCategoriesPage() {
   const loading = !isFetched && Boolean(user);
 
   const fetchCats = () => {
-    getCategories()
+    getAllCategoriesAdmin()
       .then((data) => setCategories(data))
       .catch(() => {})
       .finally(() => setIsFetched(true));

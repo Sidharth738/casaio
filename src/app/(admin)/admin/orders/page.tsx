@@ -114,7 +114,7 @@ export default function AdminOrdersPage() {
         </div>
 
         <div className="flex items-center gap-1.5 overflow-x-auto text-xs">
-          {(['all', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'] as const).map(
+          {(['all', 'pending', 'confirmed', 'processing', 'shipped', 'out_for_delivery', 'delivered', 'cancelled'] as const).map(
             (filter) => (
               <button
                 key={filter}

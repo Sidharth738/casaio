@@ -18,7 +18,7 @@ export type FulfillmentStatus =
   | 'cancelled';
 
 export type PaymentMethod = 'razorpay' | 'cod';
-export type PaymentStatus = 'pending' | 'captured' | 'failed' | 'refund_pending' | 'refund_failed' | 'refunded';
+export type PaymentStatus = 'pending' | 'authorized' | 'captured' | 'failed' | 'refund_pending' | 'refund_failed' | 'refunded';
 
 export interface OrderItem {
   productId: string;
@@ -54,8 +54,18 @@ export interface OrderPayment {
   status: PaymentStatus;
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
+  razorpayAuthorizedPaymentId?: string;
   razorpaySignature?: string;
   razorpayRefundId?: string;
+  authorizedAt?: string;
+  lastFailureAt?: string;
+  lastFailurePaymentId?: string;
+  lastFailureReason?: string;
+  failureFinalizedAt?: string;
+  reconciliationRequired?: boolean;
+  reconciliationStatus?: 'open' | 'reviewed' | 'resolved';
+  reconciliationReason?: string;
+  reconciliationPaymentIds?: string[];
   paidAt?: string;
 }
 

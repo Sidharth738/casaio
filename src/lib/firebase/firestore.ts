@@ -45,6 +45,14 @@ export async function getCategories(): Promise<Category[]> {
     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 }
 
+/** Fetch every category for the admin manager, including inactive categories. */
+export async function getAllCategoriesAdmin(): Promise<Category[]> {
+  const snap = await getDocs(collection(db, 'categories'));
+  return snap.docs
+    .map((d) => docToData<Category>(d))
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+}
+
 /**
  * Fetch a single category by its slug.
  */

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
@@ -35,6 +35,35 @@ import { formatCurrency } from '@/lib/utils';
 
 interface RazorpayInstance {
   open: () => void;
+}
+
+const PAYMENT_REQUEST_TIMEOUT_MS = 8_000;
+
+class PaymentRequestTimeoutError extends Error {
+  constructor() {
+    super('Payment status request timed out');
+    this.name = 'PaymentRequestTimeoutError';
+  }
+}
+
+async function fetchPaymentRequest(input: RequestInfo | URL, init: RequestInit = {}) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), PAYMENT_REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (controller.signal.aborted) throw new PaymentRequestTimeoutError();
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+interface ActivePaymentAttempt {
+  orderId: string;
+  orderNumber?: string;
+  status: 'pending' | 'authorized' | 'failed' | 'unknown';
+  retryAvailable: boolean;
 }
 
 interface RazorpayOptions {
@@ -91,6 +120,78 @@ export default function CheckoutPage() {
   // Submission state
   const [isProcessing, setIsProcessing] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [paymentNeedsReview, setPaymentNeedsReview] = useState(false);
+  const [activePaymentAttempt, setActivePaymentAttempt] = useState<ActivePaymentAttempt | null>(null);
+  const [attemptLoading, setAttemptLoading] = useState(false);
+
+  const refreshActivePaymentAttempt = useCallback(async (silent = false) => {
+    if (!silent) setAttemptLoading(true);
+    try {
+      const response = await fetchPaymentRequest('/api/payment/attempt', { cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok || !data || typeof data.active !== 'boolean') {
+        setPaymentNeedsReview(true);
+        setCheckoutError('Payment status could not be checked. Do not pay again until the status is confirmed.');
+        return;
+      }
+
+      if (!data.active) {
+        setActivePaymentAttempt(null);
+        setPaymentNeedsReview(false);
+        if (data.status === 'failed') {
+          setCheckoutError('The earlier payment attempts were confirmed failed and the order was cancelled. You can place a new order.');
+        } else {
+          setCheckoutError(null);
+        }
+        return;
+      }
+
+      if (data.status === 'captured' && typeof data.orderId === 'string') {
+        clearCart();
+        router.push(`/order-confirmation/${data.orderId}`);
+        return;
+      }
+
+      const attempt: ActivePaymentAttempt = {
+        orderId: data.orderId,
+        orderNumber: data.orderNumber,
+        status: data.status === 'authorized' || data.status === 'failed' || data.status === 'pending'
+          ? data.status
+          : 'unknown',
+        retryAvailable: data.retryAvailable === true,
+      };
+      setActivePaymentAttempt(attempt);
+      setPaymentMethod('razorpay');
+      setPaymentNeedsReview(!attempt.retryAvailable);
+      setCheckoutError(attempt.status === 'failed' && attempt.retryAvailable
+        ? 'The previous payment attempt failed. You may retry using the same Razorpay order.'
+        : attempt.retryAvailable
+          ? 'No payment is currently in progress. You can resume the existing Razorpay order.'
+          : attempt.status === 'authorized'
+            ? 'The payment is authorized and still being confirmed. Do not pay again.'
+            : 'The payment outcome is still being checked. Do not pay again yet.');
+    } catch (error) {
+      setPaymentNeedsReview(true);
+      setCheckoutError(error instanceof PaymentRequestTimeoutError
+        ? 'Payment status check timed out. The outcome is still unknown; do not pay again yet.'
+        : 'Payment status could not be reached. The outcome is still unknown; do not pay again yet.');
+    } finally {
+      if (!silent) setAttemptLoading(false);
+    }
+  }, [clearCart, router]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) return;
+    const statusCheck = window.setTimeout(() => void refreshActivePaymentAttempt(), 0);
+    return () => window.clearTimeout(statusCheck);
+  }, [authLoading, isAuthenticated, refreshActivePaymentAttempt]);
+
+  useEffect(() => {
+    if (!isAuthenticated || (!paymentNeedsReview && !activePaymentAttempt)) return;
+    const interval = window.setInterval(() => void refreshActivePaymentAttempt(true), 15_000);
+    return () => window.clearInterval(interval);
+  }, [isAuthenticated, paymentNeedsReview, activePaymentAttempt, refreshActivePaymentAttempt]);
 
   // Load user addresses
   useEffect(() => {
@@ -171,18 +272,21 @@ export default function CheckoutPage() {
   // Main Checkout Submission
   const handlePlaceOrder = async () => {
     setCheckoutError(null);
+    const isResumingPayment = Boolean(activePaymentAttempt?.retryAvailable);
 
     if (!isAuthenticated || !user) {
       router.push('/login?redirect=/checkout');
       return;
     }
 
-    if (!selectedAddress) {
+    if (paymentNeedsReview && !isResumingPayment) return;
+
+    if (!isResumingPayment && !selectedAddress) {
       setCheckoutError('Please select or add a delivery address to continue.');
       return;
     }
 
-    if (items.length === 0) {
+    if (!isResumingPayment && items.length === 0) {
       setCheckoutError('Your shopping bag is empty.');
       return;
     }
@@ -190,56 +294,78 @@ export default function CheckoutPage() {
     setIsProcessing(true);
 
     try {
-      const checkoutFingerprint = JSON.stringify({
-        paymentMethod,
-        items: items.map((item) => [item.productId, item.quantity]),
-        addressId: selectedAddress.id,
-        couponCode: couponResult?.isValid ? couponResult.coupon?.code : '',
-      });
-      if (checkoutRequest.current.fingerprint !== checkoutFingerprint) {
-        checkoutRequest.current = { fingerprint: checkoutFingerprint, id: crypto.randomUUID() };
-      }
-      // 1. Call server API to create the Firestore Order doc and reserve inventory
-      const createRes = await fetch('/api/orders/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          checkoutRequestId: checkoutRequest.current.id,
-          customerId: user.uid,
-          customerDetails: {
-            name: user.displayName || selectedAddress.fullName,
-            email: user.email,
-            phone: selectedAddress.phoneNumber,
-          },
-          shippingAddress: selectedAddress,
-          items,
+      let orderAlreadyCaptured = false;
+      let orderId: string;
+      let orderNumber: string;
+      if (isResumingPayment && activePaymentAttempt) {
+        orderId = activePaymentAttempt.orderId;
+        orderNumber = activePaymentAttempt.orderNumber || 'Existing order';
+      } else {
+        const checkoutFingerprint = JSON.stringify({
           paymentMethod,
-          couponCode: couponResult?.isValid ? couponResult.coupon?.code : undefined,
-        }),
-      });
+          items: items.map((item) => [item.productId, item.quantity]),
+          addressId: selectedAddress!.id,
+          couponCode: couponResult?.isValid ? couponResult.coupon?.code : '',
+        });
+        if (checkoutRequest.current.fingerprint !== checkoutFingerprint) {
+          checkoutRequest.current = { fingerprint: checkoutFingerprint, id: crypto.randomUUID() };
+        }
+        const createRes = await fetchPaymentRequest('/api/orders/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            checkoutRequestId: checkoutRequest.current.id,
+            customerId: user.uid,
+            customerDetails: {
+              name: user.displayName || selectedAddress!.fullName,
+              email: user.email,
+              phone: selectedAddress!.phoneNumber,
+            },
+            shippingAddress: selectedAddress,
+            items,
+            paymentMethod,
+            couponCode: couponResult?.isValid ? couponResult.coupon?.code : undefined,
+          }),
+        });
 
-      const orderData = await createRes.json();
-      if (!createRes.ok || !orderData.orderId) {
-        throw new Error(orderData.error || 'Failed to place order.');
+        const orderData = await createRes.json();
+        if (!createRes.ok || !orderData.orderId) {
+          if (createRes.status === 409 || createRes.status >= 500) {
+            await refreshActivePaymentAttempt();
+            if (createRes.status === 409 && typeof orderData.error === 'string') {
+              setCheckoutError(orderData.error);
+            }
+            return;
+          }
+          throw new Error(orderData.error || 'Failed to place order.');
+        }
+
+        orderId = orderData.orderId;
+        orderNumber = orderData.orderNumber;
+        orderAlreadyCaptured = orderData.paymentStatus === 'captured';
       }
 
-      const { orderId, orderNumber } = orderData;
+      if (!isResumingPayment && !activePaymentAttempt && paymentMethod === 'razorpay') {
+        setActivePaymentAttempt({ orderId, orderNumber, status: 'pending', retryAvailable: false });
+        setPaymentNeedsReview(false);
+      }
 
-      if (orderData.paymentStatus === 'captured') {
+      // Existing requests can return a completed order; never create a new charge for it.
+      if (orderAlreadyCaptured) {
         clearCart();
         router.push(`/order-confirmation/${orderId}`);
         return;
       }
 
       // 2. If Cash on Delivery, order is confirmed immediately
-      if (paymentMethod === 'cod') {
+      if (!isResumingPayment && paymentMethod === 'cod') {
         clearCart();
         router.push(`/order-confirmation/${orderId}`);
         return;
       }
 
       // 3. If Online Payment via Razorpay
-      const paymentRes = await fetch('/api/payment/create-order', {
+      const paymentRes = await fetchPaymentRequest('/api/payment/create-order', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -249,13 +375,14 @@ export default function CheckoutPage() {
 
       const rzpOrder = await paymentRes.json();
       if (!paymentRes.ok || !rzpOrder.id) {
-        throw new Error(rzpOrder.error || 'Payment initialization failed.');
+        await refreshActivePaymentAttempt();
+        return;
       }
 
       // If in dev simulation mode
-      if (rzpOrder.isSimulation || !window.Razorpay) {
+      if (rzpOrder.isSimulation) {
         // Automatically verify simulated payment for smooth development
-        const verifyRes = await fetch('/api/payment/verify', {
+        const verifyRes = await fetchPaymentRequest('/api/payment/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -271,6 +398,8 @@ export default function CheckoutPage() {
           router.push(`/order-confirmation/${orderId}`);
           return;
         }
+        await refreshActivePaymentAttempt();
+        return;
       }
 
       // Production Razorpay Checkout Modal
@@ -286,8 +415,59 @@ export default function CheckoutPage() {
           razorpay_order_id: string;
           razorpay_signature: string;
         }) {
+          const showUnconfirmedStatus = (status: 'pending' | 'failed' | 'other' | 'unknown') => {
+            setPaymentNeedsReview(true);
+            if (status === 'pending') {
+              setCheckoutError('Your payment is still being confirmed. Do not pay again. Check your orders shortly or contact concierge support.');
+            } else if (status === 'other') {
+              setCheckoutError('We could not match this payment to the current order. Do not pay again; check your orders or contact concierge support.');
+            } else {
+              setCheckoutError('We could not confirm the payment status. Do not pay again; check your orders or contact concierge support.');
+            }
+          };
+
+          const checkAuthoritativeStatus = async (): Promise<'captured' | 'failed' | 'pending' | 'other' | 'unknown'> => {
+            let verificationData: { paymentStatus?: string; matchesAttempt?: boolean } | null = null;
+            try {
+              const params = new URLSearchParams({
+                orderId,
+                razorpayOrderId: response.razorpay_order_id,
+                razorpayPaymentId: response.razorpay_payment_id,
+              });
+              const statusRes = await fetchPaymentRequest(`/api/payment/verify?${params.toString()}`, { cache: 'no-store' });
+              if (statusRes.ok) {
+                verificationData = await statusRes.json();
+                if (verificationData?.paymentStatus === 'captured') {
+                  return verificationData.matchesAttempt ? 'captured' : 'other';
+                }
+              }
+            } catch {
+              // Continue to the server's Razorpay reconciliation even if this lookup timed out.
+            }
+
+            try {
+              const activeRes = await fetchPaymentRequest('/api/payment/attempt', { cache: 'no-store' });
+              const activeData = await activeRes.json();
+              if (activeData.status === 'captured') return 'captured';
+              if (activeData.status === 'failed') return 'failed';
+              return activeData.active || verificationData?.paymentStatus === 'pending' ? 'pending' : 'unknown';
+            } catch {
+              return 'unknown';
+            }
+          };
+
+          const confirmOrder = async () => {
+            try {
+              await fetchPaymentRequest('/api/payment/attempt', { cache: 'no-store' });
+            } catch {
+              // The order is already verified; the lock can be cleared on the next status refresh.
+            }
+            clearCart();
+            router.push(`/order-confirmation/${orderId}`);
+          };
+
           try {
-            const verifyRes = await fetch('/api/payment/verify', {
+            const verifyRes = await fetchPaymentRequest('/api/payment/verify', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
@@ -299,21 +479,26 @@ export default function CheckoutPage() {
             });
 
             if (verifyRes.ok) {
-              clearCart();
-              router.push(`/order-confirmation/${orderId}`);
+              await confirmOrder();
             } else {
-              setCheckoutError('Payment verification failed. Please contact concierge support.');
+              const status = await checkAuthoritativeStatus();
+              if (status === 'captured') await confirmOrder();
+              else if (status === 'failed') await refreshActivePaymentAttempt();
+              else showUnconfirmedStatus(status);
             }
           } catch {
-            setCheckoutError('Error verifying payment.');
+            const status = await checkAuthoritativeStatus();
+            if (status === 'captured') await confirmOrder();
+            else if (status === 'failed') await refreshActivePaymentAttempt();
+            else showUnconfirmedStatus(status);
           } finally {
             setIsProcessing(false);
           }
         },
         prefill: {
-          name: selectedAddress.fullName,
+          name: selectedAddress?.fullName || user.displayName || undefined,
           email: user.email,
-          contact: selectedAddress.phoneNumber,
+          contact: selectedAddress?.phoneNumber,
         },
         theme: {
           color: '#18181b', // zinc-900 brand charcoal
@@ -333,13 +518,19 @@ export default function CheckoutPage() {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'An unexpected error occurred during checkout.';
-      setCheckoutError(msg);
+      if (err instanceof PaymentRequestTimeoutError || err instanceof TypeError) {
+        setPaymentNeedsReview(true);
+        setCheckoutError('A checkout request timed out or the network was interrupted. Checking the existing attempt; do not pay again yet.');
+        await refreshActivePaymentAttempt();
+      } else {
+        setCheckoutError(msg);
+      }
       setIsProcessing(false);
     }
   };
 
   // If bag is empty
-  if (items.length === 0 && !isProcessing) {
+  if (items.length === 0 && !isProcessing && !authLoading && !attemptLoading && !activePaymentAttempt && !paymentNeedsReview) {
     return (
       <div className="py-20 bg-[#FAFAF8] min-h-[75vh] flex items-center justify-center">
         <div className="text-center max-w-md px-4 space-y-4">
@@ -354,6 +545,41 @@ export default function CheckoutPage() {
             <Button variant="primary" size="md" rightIcon={<ArrowRight className="w-4 h-4" />}>
               Explore Catalog
             </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (items.length === 0 && !isProcessing && !authLoading) {
+    return (
+      <div className="py-20 bg-[#FAFAF8] min-h-[75vh] flex items-center justify-center">
+        <Script src="https://checkout.razorpay.com/v1/checkout.js" />
+        <div className="w-full max-w-lg mx-4 rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-sm">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-orange-50 text-orange-700">
+            {attemptLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : <AlertCircle className="h-6 w-6" />}
+          </div>
+          <h1 className="font-serif text-2xl font-bold text-zinc-950">
+            {attemptLoading ? 'Checking payment status' : 'Payment status needs attention'}
+          </h1>
+          <p className="mt-3 text-sm text-zinc-600">
+            {checkoutError || 'We are checking the existing payment attempt. Do not pay again while its outcome is unknown.'}
+          </p>
+          {activePaymentAttempt?.orderNumber && (
+            <p className="mt-2 text-xs text-zinc-500">Order {activePaymentAttempt.orderNumber}</p>
+          )}
+          <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+            <Button type="button" variant="secondary" onClick={() => void refreshActivePaymentAttempt()} disabled={attemptLoading}>
+              Refresh payment status
+            </Button>
+            {activePaymentAttempt?.retryAvailable && (
+              <Button type="button" variant="primary" onClick={handlePlaceOrder} disabled={isProcessing || !isAuthenticated} isLoading={isProcessing}>
+                Resume existing payment
+              </Button>
+            )}
+          </div>
+          <Link href="/account/orders" className="mt-5 inline-block text-sm font-medium underline underline-offset-2">
+            View your orders
           </Link>
         </div>
       </div>
@@ -389,6 +615,16 @@ export default function CheckoutPage() {
               <div className="flex-1">
                 <span className="font-semibold">Checkout notice: </span>
                 {checkoutError}
+                {paymentNeedsReview && (
+                  <div className="mt-2">
+                    <button type="button" className="mr-4 font-semibold underline underline-offset-2" onClick={() => void refreshActivePaymentAttempt()} disabled={attemptLoading}>
+                      Refresh payment status
+                    </button>
+                    <Link href="/account/orders" className="font-semibold underline underline-offset-2">
+                      View your orders
+                    </Link>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -580,7 +816,7 @@ export default function CheckoutPage() {
 
                   {/* Cash on Delivery Option */}
                   <label
-                    onClick={() => setPaymentMethod('cod')}
+                    onClick={() => { if (!activePaymentAttempt) setPaymentMethod('cod'); }}
                     className={`block p-4 rounded-xl border cursor-pointer transition-all ${
                       paymentMethod === 'cod'
                         ? 'border-zinc-950 bg-zinc-50/60 shadow-xs ring-2 ring-zinc-950/5'
@@ -756,13 +992,17 @@ export default function CheckoutPage() {
                   size="lg"
                   className="w-full text-sm font-semibold tracking-wide py-3.5"
                   onClick={handlePlaceOrder}
-                  disabled={isProcessing || !selectedAddress}
+                  disabled={isProcessing || (!selectedAddress && !activePaymentAttempt?.retryAvailable) || paymentNeedsReview}
                   isLoading={isProcessing}
                   rightIcon={!isProcessing ? <ArrowRight className="w-4 h-4" /> : undefined}
                 >
                   {paymentMethod === 'cod'
                     ? `Confirm Order with Cash on Delivery`
-                    : `Pay ${formatCurrency(grandTotal)} Securely`}
+                    : paymentNeedsReview
+                      ? 'Payment Status Needs Review'
+                      : activePaymentAttempt?.retryAvailable
+                        ? 'Resume Existing Payment'
+                        : `Pay ${formatCurrency(grandTotal)} Securely`}
                 </Button>
 
                 {/* Security and Return Guarantees */}

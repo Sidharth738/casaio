@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { adminDb } from '@/lib/firebase/admin';
 import { requireServerUser } from '@/lib/firebase/server-auth';
+import { canRetryExistingOrder, configureRazorpayTimeout, getActivePaymentAttemptRef } from '@/lib/payment/attempts';
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,7 +21,33 @@ export async function POST(req: NextRequest) {
     if (orderData.payment?.status !== 'pending' || orderData.payment?.method !== 'razorpay') {
       return NextResponse.json({ error: 'Order is not awaiting online payment' }, { status: 409 });
     }
+    const activeAttemptSnap = await getActivePaymentAttemptRef(user.uid).get();
+    if (!activeAttemptSnap.exists || activeAttemptSnap.data()?.orderId !== orderId) {
+      return NextResponse.json({ error: 'This order is not the active payment attempt' }, { status: 409 });
+    }
     if (orderData.payment?.razorpayOrderId) {
+      const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
+      const keySecret = process.env.RAZORPAY_KEY_SECRET || '';
+      if (!orderData.payment.razorpayOrderId.startsWith('order_sim_')) {
+        if (!keyId || !keySecret || /placeholder|fake|change_me/i.test(keyId + keySecret)) {
+          return NextResponse.json({ error: 'Payment gateway is not configured' }, { status: 503 });
+        }
+        const existingClient = new Razorpay({ key_id: keyId, key_secret: keySecret });
+        configureRazorpayTimeout(existingClient);
+        const [providerOrder, paymentList] = await Promise.all([
+          existingClient.orders.fetch(orderData.payment.razorpayOrderId),
+          existingClient.orders.fetchPayments(orderData.payment.razorpayOrderId),
+        ]);
+        const expectedAmount = Math.round(Number(orderData.pricing.totalAmount) * 100);
+        if (providerOrder.id !== orderData.payment.razorpayOrderId || providerOrder.amount !== expectedAmount ||
+            providerOrder.currency !== 'INR' || providerOrder.status === 'paid' ||
+            paymentList.items.some((payment) => payment.status === 'authorized' || payment.status === 'captured')) {
+          return NextResponse.json({ error: 'Payment status needs to be checked before resuming this order' }, { status: 409 });
+        }
+        if (!canRetryExistingOrder(providerOrder, paymentList.items)) {
+          return NextResponse.json({ error: 'Payment outcome is not confirmed; do not retry yet' }, { status: 409 });
+        }
+      }
       return NextResponse.json({
         id: orderData.payment.razorpayOrderId,
         amount: Math.round(Number(orderData.pricing.totalAmount) * 100),
@@ -60,17 +87,60 @@ export async function POST(req: NextRequest) {
       key_id,
       key_secret,
     });
+    configureRazorpayTimeout(instance);
+    const receipt = `rcpt_${orderId.slice(0, 20)}`;
 
-    const order = await instance.orders.create({
-      amount: amountInPaise,
-      currency: 'INR',
-      receipt: `rcpt_${orderId.slice(0, 20)}`,
-      notes: { orderId, customerId: user.uid },
+    // Receipt is stable per Firestore order so an SDK timeout cannot create
+    // a second Razorpay order on a later explicit recovery request.
+    const existingGatewayOrders = await instance.orders.all({ receipt, count: 1 });
+    let gatewayOrder = existingGatewayOrders.items.find((candidate) => candidate.receipt === receipt);
+    if (gatewayOrder && (gatewayOrder.amount !== amountInPaise || gatewayOrder.currency !== 'INR')) {
+      return NextResponse.json({ error: 'Existing payment order does not match this order' }, { status: 409 });
+    }
+
+    if (!gatewayOrder) {
+      try {
+        gatewayOrder = await instance.orders.create({
+          amount: amountInPaise,
+          currency: 'INR',
+          receipt,
+          notes: { orderId, customerId: user.uid },
+        });
+      } catch {
+        // A timed-out create may have succeeded remotely. Only look it up by
+        // the same unique receipt; never create a replacement receipt.
+        try {
+          const recovered = await instance.orders.all({ receipt, count: 1 });
+          gatewayOrder = recovered.items.find((candidate) => candidate.receipt === receipt);
+        } catch {
+          return NextResponse.json({ error: 'Payment setup status is unknown. Refresh payment status before continuing.' }, { status: 503 });
+        }
+        if (!gatewayOrder) {
+          return NextResponse.json({ error: 'Payment setup status is unknown. Refresh payment status before continuing.' }, { status: 503 });
+        }
+      }
+    }
+
+    if (!gatewayOrder?.id || gatewayOrder.amount !== amountInPaise || gatewayOrder.currency !== 'INR') {
+      return NextResponse.json({ error: 'Payment setup could not be confirmed' }, { status: 503 });
+    }
+
+    const persistResult = await adminDb.runTransaction(async (transaction) => {
+      const snapshot = await transaction.get(orderRef);
+      const current = snapshot.data();
+      if (!snapshot.exists || current?.customerId !== user.uid || current.payment?.method !== 'razorpay') return 'missing';
+      if (current.payment?.status !== 'pending' || current.payment?.razorpayOrderId && current.payment.razorpayOrderId !== gatewayOrder.id) return 'conflict';
+      transaction.update(orderRef, {
+        'payment.razorpayOrderId': gatewayOrder.id,
+        updatedAt: new Date().toISOString(),
+      });
+      return 'saved';
     });
+    if (persistResult !== 'saved') {
+      return NextResponse.json({ error: 'Payment setup could not be attached to this order' }, { status: 409 });
+    }
 
-    await orderRef.update({ 'payment.razorpayOrderId': order.id, updatedAt: new Date().toISOString() });
-
-    return NextResponse.json(order);
+    return NextResponse.json(gatewayOrder);
   } catch (error: unknown) {
     console.error('Razorpay order creation error:', error);
     const msg = error instanceof Error ? error.message : 'Failed to initiate payment gateway order';
