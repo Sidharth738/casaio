@@ -16,7 +16,6 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import type { Order, SellerProfile, Product, UserProfile } from '@/types';
 import {
-  getAllOrdersAdmin,
   getAllSellers,
   getAllProductsAdmin,
   getAllUsersAdmin,
@@ -40,22 +39,18 @@ export default function AdminDashboardPage() {
   const loading = !isFetched && Boolean(user);
 
   const loadData = () => {
-    Promise.all([
-      getAllOrdersAdmin(),
-      getAllSellers(),
-      getAllProductsAdmin(),
-      getAllUsersAdmin(),
-    ])
-      .then(([ords, sels, prods, usrs]) => {
-        setOrders(ords);
-        setSellers(sels);
-        setProducts(prods);
-        setUsers(usrs);
+    const ordersRequest = fetch('/api/admin/orders')
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Could not load orders');
+        return await response.json() as { orders: Order[] };
       })
-      .catch(() => {})
-      .finally(() => {
-        setIsFetched(true);
-      });
+      .then((data) => setOrders(data.orders))
+      .catch(() => {});
+    const sellersRequest = getAllSellers().then(setSellers).catch(() => {});
+    const productsRequest = getAllProductsAdmin().then(setProducts).catch(() => {});
+    const usersRequest = getAllUsersAdmin().then(setUsers).catch(() => {});
+    Promise.all([ordersRequest, sellersRequest, productsRequest, usersRequest])
+      .finally(() => setIsFetched(true));
   };
 
   useEffect(() => {

@@ -11,13 +11,14 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import type { Order, OrderStatus } from '@/types';
-import { getAllOrdersAdmin } from '@/lib/firebase/firestore';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 export default function AdminOrdersPage() {
   const { user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
+  const [orderCount, setOrderCount] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [isFetched, setIsFetched] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -29,11 +30,20 @@ export default function AdminOrdersPage() {
     let isMounted = true;
     if (!user) return;
 
-    getAllOrdersAdmin()
-      .then((data) => {
-        if (isMounted) setOrders(data);
+    fetch('/api/admin/orders')
+      .then(async (response) => {
+        if (!response.ok) throw new Error('Could not load orders');
+        return await response.json() as { orders: Order[]; count: number };
       })
-      .catch(() => {})
+      .then((data) => {
+        if (isMounted) {
+          setOrders(data.orders);
+          setOrderCount(data.count);
+        }
+      })
+      .catch(() => {
+        if (isMounted) setLoadError(true);
+      })
       .finally(() => {
         if (isMounted) setIsFetched(true);
       });
@@ -96,7 +106,7 @@ export default function AdminOrdersPage() {
         </div>
 
         <div className="text-xs font-mono text-zinc-400">
-          {orders.length} total orders logged
+          {loading ? 'Loading…' : loadError ? 'Count unavailable' : `${orderCount ?? 0} total orders logged`}
         </div>
       </div>
 
@@ -137,6 +147,11 @@ export default function AdminOrdersPage() {
         <div className="py-20 flex flex-col items-center justify-center text-zinc-400">
           <Loader2 className="w-8 h-8 animate-spin mb-3 text-orange-600" />
           <p className="text-xs">Loading platform orders...</p>
+        </div>
+      ) : loadError ? (
+        <div className="bg-white rounded-2xl border border-rose-200 p-12 text-center shadow-xs">
+          <h3 className="font-serif text-lg font-bold text-zinc-900">Orders could not be loaded</h3>
+          <p className="text-xs text-zinc-500 mt-1">Check the admin Firebase server credentials and try refreshing.</p>
         </div>
       ) : filteredOrders.length === 0 ? (
         <div className="bg-white rounded-2xl border border-zinc-200/80 p-12 text-center space-y-4 shadow-xs">
