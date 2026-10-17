@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, Suspense } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
@@ -16,7 +16,7 @@ function LoginForm() {
   const redirect = getSafeRedirect(requestedRedirect);
   const hasRequestedRedirect = Boolean(requestedRedirect && (redirect !== '/' || requestedRedirect === '/'));
 
-  const { loginWithEmail, loginWithGoogle } = useAuth();
+  const { loginWithEmail, loginWithGoogle, resendVerificationEmail } = useAuth();
   const emailVerified = searchParams.get('verified') === '1';
 
   const [email, setEmail] = useState('');
@@ -24,10 +24,22 @@ function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState<string | null>(null);
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = window.setTimeout(() => setResendCooldown((seconds) => Math.max(0, seconds - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [resendCooldown]);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setNeedsVerification(false);
+    setResendMessage(null);
     setIsLoading(true);
 
     let role: string;
@@ -40,7 +52,9 @@ function LoginForm() {
       } else if (code === 'auth/too-many-requests') {
         setError('Too many failed attempts. Please reset your password or try again later.');
       } else if (code === 'auth/email-not-verified') {
-        setError('Your email is not verified yet. We sent a new verification link; check your inbox and spam folder.');
+        setError((err as Error).message);
+        setNeedsVerification(true);
+        setResendCooldown((err as { verificationEmailSent?: boolean }).verificationEmailSent ? 60 : 0);
       } else if (code === 'auth/profile-initialization-failed' || code === 'auth/session-creation-failed') {
         setError((err as Error).message);
       } else {
@@ -56,6 +70,31 @@ function LoginForm() {
       setError('You are signed in, but we could not open the next page. Please use the site navigation to continue.');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (resendCooldown > 0 || isResending) return;
+    setIsResending(true);
+    setResendMessage(null);
+    try {
+      await resendVerificationEmail(email, password);
+      setResendMessage('A new verification link has been sent. Check your inbox and spam folder.');
+      setResendCooldown(60);
+    } catch (cause: unknown) {
+      const code = (cause as { code?: string })?.code;
+      if (code === 'auth/email-already-verified') {
+        setResendMessage('This email is already verified. You can sign in now.');
+      } else if (code === 'auth/too-many-requests') {
+        setResendMessage('Too many emails were requested. Please wait a few minutes and try again.');
+        setResendCooldown(60);
+      } else if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
+        setResendMessage('We could not verify those sign-in details. Check your email and password, then try again.');
+      } else {
+        setResendMessage('We could not send a verification link right now. Please try again shortly.');
+      }
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -94,6 +133,21 @@ function LoginForm() {
         <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 animate-fade-in">
           <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
           <span>{error}</span>
+        </div>
+      )}
+
+      {needsVerification && (
+        <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3.5 text-sm text-amber-950" aria-live="polite">
+          <p>Open the verification email before signing in. If you need another link, we can send one to this account.</p>
+          <button
+            type="button"
+            onClick={handleResendVerification}
+            disabled={isResending || resendCooldown > 0 || !email || !password}
+            className="min-h-10 rounded px-1 font-semibold text-orange-800 underline decoration-orange-300 underline-offset-4 hover:text-orange-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600 disabled:opacity-50"
+          >
+            {isResending ? 'Sending verification email…' : resendCooldown > 0 ? `Try again in ${resendCooldown}s` : 'Resend verification email'}
+          </button>
+          {resendMessage && <p className="text-xs leading-5" role="status">{resendMessage}</p>}
         </div>
       )}
 

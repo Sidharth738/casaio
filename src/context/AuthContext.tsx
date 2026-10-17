@@ -9,6 +9,7 @@ import {
   GoogleAuthProvider,
   signOut,
   sendPasswordResetEmail,
+  type ActionCodeSettings,
   onAuthStateChanged,
   updateProfile,
   sendEmailVerification,
@@ -28,10 +29,18 @@ interface AuthContextType {
   loginWithGoogle: () => Promise<UserRole>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  resendVerificationEmail: (email: string, password: string) => Promise<void>;
   refreshSession: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+function getActionCodeSettings(continuePath: string): ActionCodeSettings {
+  return {
+    url: new URL(continuePath, window.location.origin).toString(),
+    handleCodeInApp: false,
+  };
+}
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
@@ -184,16 +193,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.error('Unable to clear rejected login session:', clearError);
           }
           if (code === 'auth/email-not-verified') {
+            let verificationEmailSent = false;
             try {
               await sendEmailVerification(cred.user, {
-                url: `${window.location.origin}/login?verified=1`,
-                handleCodeInApp: false,
+                ...getActionCodeSettings('/login?verified=1'),
               });
+              verificationEmailSent = true;
             } catch (emailError) {
               console.error('Unable to send verification email:', emailError);
             }
-            const error = new Error('Please verify your email. We sent you a fresh verification link.') as Error & { code: string };
+            const error = new Error(
+              verificationEmailSent
+                ? 'Your email is not verified yet. We sent a fresh verification link; check your inbox and spam folder.'
+                : 'Your email is not verified yet. We could not send a verification link, but you can try resending it below.'
+            ) as Error & { code: string; verificationEmailSent: boolean };
             error.code = 'auth/email-not-verified';
+            error.verificationEmailSent = verificationEmailSent;
             throw error;
           }
           const error = new Error('Your credentials are valid, but we could not establish your secure session. Please try again.') as Error & { code: string; cause?: unknown };
@@ -250,10 +265,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       let verificationEmailSent = true;
       try {
-        await sendEmailVerification(cred.user, {
-          url: `${window.location.origin}/login?verified=1`,
-          handleCodeInApp: false,
-        });
+        await sendEmailVerification(cred.user, getActionCodeSettings('/login?verified=1'));
       } catch (error) {
         verificationEmailSent = false;
         console.error('Account created, but the verification email could not be sent:', error);
@@ -320,7 +332,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const resetPassword = async (email: string) => {
-    await sendPasswordResetEmail(auth, email);
+    await sendPasswordResetEmail(auth, email.trim(), getActionCodeSettings('/login'));
+  };
+
+  const resendVerificationEmail = async (email: string, password: string) => {
+    emailLoginInProgress.current = true;
+    let signedInForResend = false;
+    try {
+      const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+      signedInForResend = true;
+      if (credential.user.emailVerified) {
+        throw Object.assign(new Error('This email is already verified. You can sign in now.'), {
+          code: 'auth/email-already-verified',
+        });
+      }
+      await sendEmailVerification(credential.user, getActionCodeSettings('/login?verified=1'));
+    } finally {
+      try {
+        if (signedInForResend && auth.currentUser) await signOut(auth);
+      } finally {
+        emailLoginInProgress.current = false;
+      }
+    }
   };
 
   const refreshSession = async () => {
@@ -345,6 +378,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginWithGoogle,
         logout,
         resetPassword,
+        resendVerificationEmail,
         refreshSession,
       }}
     >

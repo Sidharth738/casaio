@@ -99,6 +99,13 @@ export default function AdminUsersPage() {
     return true;
   });
 
+  const emailAccountCounts = usersList.reduce<Record<string, number>>((counts, account) => {
+    const normalizedEmail = account.email?.trim().toLowerCase();
+    if (normalizedEmail) counts[normalizedEmail] = (counts[normalizedEmail] || 0) + 1;
+    return counts;
+  }, {});
+  const duplicateEmailCount = Object.values(emailAccountCounts).filter((count) => count > 1).length;
+
   const totalUsers = usersList.length;
   const customerCount = usersList.filter((u) => u.role === 'customer').length;
   const sellerCount = usersList.filter((u) => u.role === 'seller').length;
@@ -143,6 +150,12 @@ export default function AdminUsersPage() {
           </p>
         </div>
       </div>
+
+      {duplicateEmailCount > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+          {duplicateEmailCount} email {duplicateEmailCount === 1 ? 'address is' : 'addresses are'} used by multiple accounts. Each row has a separate account ID; review the matching rows before changing or removing an account.
+        </div>
+      )}
 
       {/* Metrics Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -307,6 +320,11 @@ export default function AdminUsersPage() {
                             <Mail className="w-3 h-3 text-zinc-400 shrink-0" />
                             <span>{u.email}</span>
                           </div>
+                          {(emailAccountCounts[u.email?.trim().toLowerCase() || ''] || 0) > 1 && (
+                            <span className="ml-[18px] inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                              Shared by {emailAccountCounts[u.email.trim().toLowerCase()]} accounts
+                            </span>
+                          )}
                           {u.phoneNumber && (
                             <div className="flex items-center gap-1.5 text-zinc-500">
                               <Phone className="w-3 h-3 text-zinc-400 shrink-0" />

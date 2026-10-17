@@ -106,11 +106,14 @@ function RegisterForm() {
           <h3 className="font-semibold">Account created</h3>
           <p className="mt-1">
             {verificationEmailSent ? (
-              <>We sent a verification link to <strong>{verificationEmail}</strong>. Open it to verify your address, then sign in.</>
+              <>We sent a verification link to <strong>{verificationEmail}</strong>. Open it to verify your address, then sign in. Check your spam folder if it isn&apos;t in your inbox.</>
             ) : (
-              <>Your account was created, but we couldn&apos;t send the verification email. Continue to sign in and we&apos;ll send another link.</>
+              <>Your account was created, but we couldn&apos;t send the verification email. Continue to sign in and request another link.</>
             )}
           </p>
+          {verificationEmailSent && (
+            <p className="mt-2 text-xs">Didn&apos;t receive it? On the sign-in page, enter your email and password to request another verification link.</p>
+          )}
           {!profileSaved && (
             <p className="mt-2">Your account was created, but we couldn&apos;t save your name. You can update it after signing in.</p>
           )}
