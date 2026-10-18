@@ -42,6 +42,19 @@ function getActionCodeSettings(continuePath: string): ActionCodeSettings {
   };
 }
 
+async function sendVerificationEmail(user: User): Promise<void> {
+  try {
+    await sendEmailVerification(user, getActionCodeSettings('/login?verified=1'));
+  } catch (error) {
+    const code = (error as { code?: string }).code;
+    // A misconfigured authorized continue URL should not prevent Firebase from
+    // sending its standard verification link, which still verifies the account.
+    if (code !== 'auth/unauthorized-continue-uri' && code !== 'auth/invalid-continue-uri') throw error;
+    console.warn('Custom verification return URL was rejected; sending the standard Firebase verification link instead.');
+    await sendEmailVerification(user);
+  }
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -195,9 +208,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (code === 'auth/email-not-verified') {
             let verificationEmailSent = false;
             try {
-              await sendEmailVerification(cred.user, {
-                ...getActionCodeSettings('/login?verified=1'),
-              });
+              await sendVerificationEmail(cred.user);
               verificationEmailSent = true;
             } catch (emailError) {
               console.error('Unable to send verification email:', emailError);
@@ -265,7 +276,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       let verificationEmailSent = true;
       try {
-        await sendEmailVerification(cred.user, getActionCodeSettings('/login?verified=1'));
+        await sendVerificationEmail(cred.user);
       } catch (error) {
         verificationEmailSent = false;
         console.error('Account created, but the verification email could not be sent:', error);
@@ -346,7 +357,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           code: 'auth/email-already-verified',
         });
       }
-      await sendEmailVerification(credential.user, getActionCodeSettings('/login?verified=1'));
+      await sendVerificationEmail(credential.user);
     } finally {
       try {
         if (signedInForResend && auth.currentUser) await signOut(auth);
