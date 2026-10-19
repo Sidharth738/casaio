@@ -15,8 +15,9 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import type { Order, FulfillmentStatus } from '@/types';
-import { getOrderById } from '@/lib/firebase/firestore';
+import type { FulfillmentStatus } from '@/types';
+import type { SellerOrder } from '@/lib/orders/seller-projection';
+import { getSellerOrderById } from '@/lib/firebase/firestore';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
@@ -27,7 +28,7 @@ export default function SellerOrderDetailPage() {
   const orderId = params?.orderId as string;
   const { user } = useAuth();
 
-  const [order, setOrder] = useState<Order | null>(null);
+  const [order, setOrder] = useState<SellerOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -44,12 +45,12 @@ export default function SellerOrderDetailPage() {
     let isMounted = true;
     if (!orderId) return;
 
-    getOrderById(orderId)
+    getSellerOrderById(orderId)
       .then((data) => {
         if (isMounted) {
           setOrder(data);
           // Pre-populate if seller has already set tracking on items
-          const sellerItem = data?.items.find((i) => i.sellerId === user?.uid);
+          const sellerItem = data?.items.find((i) => i.sellerId === user?.uid) || data?.items[0];
           if (sellerItem) {
             setFulfillmentStatus(sellerItem.fulfillmentStatus || 'processing');
             if (sellerItem.trackingDetails?.carrier) {
@@ -109,7 +110,7 @@ export default function SellerOrderDetailPage() {
       setSuccessMessage('Fulfillment status and courier milestone updated successfully!');
 
       // Refresh order view
-      const refreshed = await getOrderById(orderId);
+      const refreshed = await getSellerOrderById(orderId);
       setOrder(refreshed);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'An error occurred';

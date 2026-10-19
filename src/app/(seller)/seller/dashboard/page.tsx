@@ -13,7 +13,8 @@ import {
   Loader2,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import type { Product, Order, SellerProfile } from '@/types';
+import type { Product, SellerProfile } from '@/types';
+import type { SellerOrder } from '@/lib/orders/seller-projection';
 import {
   getSellerProfile,
   getSellerProducts,
@@ -28,7 +29,7 @@ export default function SellerDashboardPage() {
   const { user } = useAuth();
   const [profile, setProfile] = useState<SellerProfile | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<SellerOrder[]>([]);
   const [isFetched, setIsFetched] = useState(false);
 
   const loading = !isFetched && Boolean(user);

@@ -16,11 +16,14 @@ import {
   PlusCircle,
   ExternalLink,
   Loader2,
+  AlertTriangle,
+  XCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Logo } from '@/components/common/Logo';
 import { getSellerProfile } from '@/lib/firebase/firestore';
 import type { SellerProfile } from '@/types';
+import { resolveSellerPortalAccessState } from '@/lib/seller/portal-state';
 
 export default function SellerPortalLayout({
   children,
@@ -58,7 +61,15 @@ export default function SellerPortalLayout({
     return <>{children}</>;
   }
 
-  if (authLoading || profileLoading) {
+  const accessState = resolveSellerPortalAccessState({
+    user,
+    role,
+    sellerProfile,
+    authLoading,
+    profileLoading,
+  });
+
+  if (accessState === 'loading') {
     return (
       <div className="min-h-screen bg-[#FAFAF8] flex flex-col items-center justify-center text-zinc-400">
         <Loader2 className="w-8 h-8 animate-spin text-orange-600 mb-3" />
@@ -68,7 +79,7 @@ export default function SellerPortalLayout({
   }
 
   // Not signed in
-  if (!user) {
+  if (accessState === 'unauthenticated') {
     return (
       <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-2xl border border-zinc-200 p-8 text-center space-y-4 shadow-sm">
@@ -91,44 +102,126 @@ export default function SellerPortalLayout({
     );
   }
 
-  // If user has applied and is pending approval
-  if (role !== 'seller' && role !== 'admin') {
-    if (sellerProfile?.status === 'pending') {
-      return (
-        <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center p-4">
-          <div className="max-w-lg w-full bg-white rounded-2xl border border-orange-200 p-8 text-center space-y-4 shadow-xs">
-            <div className="w-14 h-14 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center mx-auto border border-orange-200">
-              <Clock className="w-7 h-7" />
-            </div>
-            <div>
-              <Badge variant="accent" size="sm" className="mb-2">
-                Application Under Review
-              </Badge>
-              <h2 className="font-serif text-2xl font-bold text-zinc-950">
-                {sellerProfile.storeName}
-              </h2>
-              <p className="text-xs text-zinc-500 mt-2 max-w-sm mx-auto leading-relaxed">
-                Thank you for applying to Casaio. Our vendor curation committee is reviewing your atelier catalog details. Standard approval turnaround is 24 to 48 business hours.
-              </p>
-            </div>
-            <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
-              <Link href="/">
-                <Button variant="outline" size="sm">
-                  Return to Storefront
-                </Button>
-              </Link>
-              <Link href="/account/profile">
-                <Button variant="secondary" size="sm">
-                  Customer Account
-                </Button>
-              </Link>
-            </div>
+  // Application pending approval
+  if (accessState === 'pending') {
+    return (
+      <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center p-4">
+        <div className="max-w-lg w-full bg-white rounded-2xl border border-orange-200 p-8 text-center space-y-4 shadow-xs">
+          <div className="w-14 h-14 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center mx-auto border border-orange-200">
+            <Clock className="w-7 h-7" />
+          </div>
+          <div>
+            <Badge variant="accent" size="sm" className="mb-2">
+              Application Under Review
+            </Badge>
+            <h2 className="font-serif text-2xl font-bold text-zinc-950">
+              {sellerProfile?.storeName || 'Merchant Store'}
+            </h2>
+            <p className="text-xs text-zinc-500 mt-2 max-w-sm mx-auto leading-relaxed">
+              Thank you for applying to Casaio. Our vendor curation committee is reviewing your atelier catalog details. Standard approval turnaround is 24 to 48 business hours.
+            </p>
+          </div>
+          <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link href="/">
+              <Button variant="outline" size="sm">
+                Return to Storefront
+              </Button>
+            </Link>
+            <Link href="/account/profile">
+              <Button variant="secondary" size="sm">
+                Customer Account
+              </Button>
+            </Link>
           </div>
         </div>
-      );
-    }
+      </div>
+    );
+  }
 
-    // No application submitted yet
+  // Account suspended
+  if (accessState === 'suspended') {
+    return (
+      <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center p-4">
+        <div className="max-w-lg w-full bg-white rounded-2xl border border-red-200 p-8 text-center space-y-4 shadow-xs">
+          <div className="w-14 h-14 rounded-full bg-red-50 text-red-600 flex items-center justify-center mx-auto border border-red-200">
+            <AlertTriangle className="w-7 h-7" />
+          </div>
+          <div>
+            <span className="inline-block px-2.5 py-0.5 text-[11px] font-medium tracking-wide uppercase rounded-full bg-red-100 text-red-800 mb-2">
+              Store Suspended
+            </span>
+            <h2 className="font-serif text-2xl font-bold text-zinc-950">
+              {sellerProfile?.storeName || 'Merchant Store'}
+            </h2>
+            <p className="text-xs text-zinc-600 mt-2 max-w-md mx-auto leading-relaxed">
+              Your merchant selling privileges have been suspended by the Casaio administrative team.
+              {sellerProfile?.statusReason ? (
+                <span className="block mt-2 font-medium text-red-700 bg-red-50 p-2.5 rounded-lg border border-red-100">
+                  Reason: {sellerProfile.statusReason}
+                </span>
+              ) : null}
+            </p>
+          </div>
+          <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link href="mailto:support@casaio.com">
+              <Button variant="primary" size="sm">
+                Contact Partner Support
+              </Button>
+            </Link>
+            <Link href="/">
+              <Button variant="outline" size="sm">
+                Return to Storefront
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Application rejected
+  if (accessState === 'rejected') {
+    return (
+      <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center p-4">
+        <div className="max-w-lg w-full bg-white rounded-2xl border border-zinc-200 p-8 text-center space-y-4 shadow-xs">
+          <div className="w-14 h-14 rounded-full bg-zinc-100 text-zinc-600 flex items-center justify-center mx-auto border border-zinc-200">
+            <XCircle className="w-7 h-7" />
+          </div>
+          <div>
+            <span className="inline-block px-2.5 py-0.5 text-[11px] font-medium tracking-wide uppercase rounded-full bg-zinc-100 text-zinc-700 mb-2">
+              Application Not Approved
+            </span>
+            <h2 className="font-serif text-2xl font-bold text-zinc-950">
+              {sellerProfile?.storeName || 'Application Status'}
+            </h2>
+            <p className="text-xs text-zinc-600 mt-2 max-w-md mx-auto leading-relaxed">
+              We appreciate your interest in partnering with Casaio. Unfortunately, our curation team was unable to approve your application at this time.
+              {sellerProfile?.statusReason ? (
+                <span className="block mt-2 font-medium text-zinc-800 bg-zinc-50 p-2.5 rounded-lg border border-zinc-200">
+                  Feedback: {sellerProfile.statusReason}
+                </span>
+              ) : null}
+            </p>
+          </div>
+          <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link href="/seller/register">
+              <Button variant="primary" size="sm">
+                Reapply with Updates
+              </Button>
+            </Link>
+            <Link href="/">
+              <Button variant="outline" size="sm">
+                Return to Storefront
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // No application submitted yet
+  if (accessState === 'unregistered') {
     return (
       <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-2xl border border-zinc-200 p-8 text-center space-y-4 shadow-sm">
@@ -180,7 +273,7 @@ export default function SellerPortalLayout({
 
             <div className="hidden sm:flex items-center gap-2">
               <span className="text-xs font-semibold text-zinc-800">
-                {sellerProfile?.storeName || user.displayName || 'Vendor Portal'}
+                {sellerProfile?.storeName || user?.displayName || 'Vendor Portal'}
               </span>
               <Badge variant="accent" size="sm">
                 Verified Dropshipper

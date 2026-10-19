@@ -5,6 +5,7 @@ import { requireServerRole } from '@/lib/firebase/server-auth';
 import { UpdateProductSchema } from '@/lib/validators/product';
 import type { ProductStatus } from '@/types';
 import { getProductDeletionBlockReason } from '@/lib/products/deletion';
+import { FieldValue } from 'firebase-admin/firestore';
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -44,7 +45,17 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
       updates.categorySlug = categorySnap.data()?.slug || updates.categorySlug;
     }
 
-    await productRef.update({ ...updates, updatedAt: new Date().toISOString() });
+    const { costPerItem, ...publicUpdates } = updates;
+    const productBatch = adminDb.batch();
+    productBatch.update(productRef, {
+      ...publicUpdates,
+      ...(costPerItem !== undefined ? { costPerItem: FieldValue.delete() } : {}),
+      updatedAt: new Date().toISOString(),
+    });
+    if (costPerItem !== undefined) {
+      productBatch.set(adminDb.collection('productPrivate').doc(id), { costPerItem }, { merge: true });
+    }
+    await productBatch.commit();
     revalidatePath('/', 'page');
     revalidatePath('/products', 'page');
     if (currentProduct.slug) revalidatePath(`/products/${currentProduct.slug}`);
@@ -122,7 +133,10 @@ export async function DELETE(req: NextRequest, { params }: RouteContext) {
     }
 
     const slug = productSnap.data()?.slug;
-    await productRef.delete();
+    const productBatch = adminDb.batch();
+    productBatch.delete(productRef);
+    productBatch.delete(adminDb.collection('productPrivate').doc(id));
+    await productBatch.commit();
     revalidatePath('/', 'page');
     revalidatePath('/products', 'page');
     if (slug) revalidatePath(`/products/${slug}`);

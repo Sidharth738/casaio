@@ -8,8 +8,6 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Container } from '@/components/ui/Container';
 import { Card, CardContent } from '@/components/ui/Card';
-import { doc, setDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { Store, CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react';
 
 export default function SellerRegisterPage() {
@@ -40,36 +38,26 @@ export default function SellerRegisterPage() {
     setIsLoading(true);
 
     try {
-      const now = new Date().toISOString();
-      const slug = storeName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const response = await fetch('/api/seller/applications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storeName,
+          storeEmail,
+          storePhone,
+          description,
+          businessAddress: {
+            street,
+            city,
+            state,
+            postalCode,
+            country: 'India',
+          },
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to submit seller application.');
 
-      const sellerDoc = {
-        id: user.uid,
-        storeName,
-        storeSlug: slug,
-        storeEmail,
-        storePhone,
-        description,
-        status: 'pending',
-        businessAddress: {
-          street,
-          city,
-          state,
-          postalCode,
-          country: 'India',
-        },
-        commissionRatePercent: 10,
-        metrics: {
-          totalSalesAmount: 0,
-          totalOrdersCount: 0,
-          ratingAverage: 5.0,
-          ratingCount: 0,
-        },
-        createdAt: now,
-        updatedAt: now,
-      };
-
-      await setDoc(doc(db, 'sellers', user.uid), sellerDoc);
       setIsSuccess(true);
     } catch (err: unknown) {
       setError((err as Error).message || 'Failed to submit seller application.');

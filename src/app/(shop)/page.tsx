@@ -6,7 +6,8 @@ import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { Container } from '@/components/ui/Container';
 import { formatCurrency, getRenderableImageUrl } from '@/lib/utils';
-import { getCategories, getProducts } from '@/lib/firebase/firestore';
+import { getCategories } from '@/lib/firebase/firestore';
+import { getPublicProductPage } from '@/lib/firebase/server-catalog';
 import type { Category, Product } from '@/types';
 import {
   ArrowRight,
@@ -64,7 +65,7 @@ export default async function HomePage() {
 
   let activeProducts: Product[] = [];
   try {
-    activeProducts = (await getProducts({ sortBy: 'newest' })).products;
+    activeProducts = (await getPublicProductPage({ sortBy: 'newest' })).products;
   } catch {
     // Keep the curated fallback while Firestore is unavailable.
   }

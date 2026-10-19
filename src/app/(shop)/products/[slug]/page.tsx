@@ -9,8 +9,7 @@ import { ProductImageGallery } from '@/components/product/ProductImageGallery';
 import { ProductActions } from '@/components/product/ProductActions';
 import { ProductCard } from '@/components/product/ProductCard';
 import { ReviewsSection } from '@/components/review/ReviewsSection';
-import { getRelatedProducts } from '@/lib/firebase/firestore';
-import { getActiveProductBySlug } from '@/lib/firebase/server-catalog';
+import { getActiveProductBySlug, getRelatedPublicProducts } from '@/lib/firebase/server-catalog';
 import type { Product } from '@/types';
 
 interface ProductPageProps {
@@ -63,7 +62,7 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
 
   let relatedProducts: Product[] = [];
   try {
-    relatedProducts = await getRelatedProducts(product.categorySlug, product.id, 4);
+    relatedProducts = await getRelatedPublicProducts(product.categorySlug, product.id, 4);
   } catch {
     relatedProducts = [];
   }

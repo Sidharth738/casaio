@@ -76,7 +76,13 @@ export async function POST(req: NextRequest) {
       updatedAt: now,
     };
 
-    await newDocRef.set(newProduct);
+    const { costPerItem, ...publicProduct } = newProduct;
+    const productBatch = adminDb.batch();
+    productBatch.set(newDocRef, publicProduct);
+    if (costPerItem !== undefined) {
+      productBatch.set(adminDb.collection('productPrivate').doc(newDocRef.id), { costPerItem });
+    }
+    await productBatch.commit();
     revalidatePath('/', 'page');
     revalidatePath(`/products/${slug}`);
 

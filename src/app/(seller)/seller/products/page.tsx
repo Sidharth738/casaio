@@ -58,7 +58,6 @@ export default function SellerProductsPage() {
             ? {
                 ...p,
                 stock: newStock,
-                status: newStock <= 0 ? 'out_of_stock' : p.status,
               }
             : p
         )

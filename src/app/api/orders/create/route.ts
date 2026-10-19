@@ -8,10 +8,17 @@ import type {
   OrderPayment,
   PaymentMethod,
   PaymentStatus,
-  UserAddress,
 } from '@/types';
 import { requireServerUser } from '@/lib/firebase/server-auth';
 import { getActivePaymentAttemptRef, getCheckoutCoordinationRef, isCheckoutCoordinationFresh } from '@/lib/payment/attempts';
+import {
+  validateShippingAddress,
+  validatePurchasableProduct,
+  calculateAuthoritativePricing,
+  calculateStockUpdates,
+  validateFirestoreCoupon,
+  type CouponRule,
+} from '@/lib/orders/checkout-validation';
 
 const CHECKOUT_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
 
@@ -160,12 +167,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!shippingAddress || !shippingAddress.addressLine1 || !shippingAddress.postalCode) {
+    const addressValidation = validateShippingAddress(shippingAddress);
+    if (!addressValidation.isValid || !addressValidation.cleanAddress) {
       return NextResponse.json(
-        { error: 'Valid shipping address is required' },
+        { error: addressValidation.error || 'Valid shipping address is required' },
         { status: 400 }
       );
     }
+    const cleanShippingAddress = addressValidation.cleanAddress;
 
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
@@ -174,110 +183,80 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Fetch fresh product details to ensure authentic price & stock availability
+    // 2. Fetch fresh product details to ensure authentic price, variant integrity & stock availability
     let subtotal = 0;
     const verifiedOrderItems: OrderItem[] = [];
     const sellerIdsSet = new Set<string>();
-    const seenProductIds = new Set<string>();
+    const seenItemKeys = new Set<string>();
 
     for (const item of items) {
-      if (!item?.productId || seenProductIds.has(item.productId)) {
-        return NextResponse.json({ error: 'Each product must appear once in the cart.' }, { status: 400 });
+      if (!item?.productId || typeof item.productId !== 'string') {
+        return NextResponse.json({ error: 'Valid product ID is required for each cart item.' }, { status: 400 });
       }
-      seenProductIds.add(item.productId);
+
+      const cleanVariantSku = typeof item.variantSku === 'string' ? item.variantSku.trim() : '';
+      const itemKey = cleanVariantSku ? `${item.productId}:${cleanVariantSku}` : item.productId;
+      if (seenItemKeys.has(itemKey)) {
+        return NextResponse.json({ error: 'Each product variant must appear once in the cart.' }, { status: 400 });
+      }
+      seenItemKeys.add(itemKey);
+
       const productRef = adminDb.collection('products').doc(item.productId);
       const productSnap = await productRef.get();
 
-      if (!productSnap.exists) {
+      const validationRes = validatePurchasableProduct(productSnap.data(), item);
+      if (!validationRes.isValid || !validationRes.verifiedItem) {
         return NextResponse.json(
-          { error: `Product "${item.title}" is no longer available in the catalogue.` },
+          { error: validationRes.error || 'Product validation failed.' },
           { status: 400 }
         );
       }
 
-      const product = productSnap.data();
-
-      if ((product?.stock ?? 0) < item.quantity) {
-        return NextResponse.json(
-          {
-            error: `Insufficient stock for "${product?.title}". Available: ${product?.stock ?? 0}, Requested: ${item.quantity}.`,
-          },
-          { status: 400 }
-        );
-      }
-
-      const unitPrice = Number(product?.price);
-      const quantity = Number(item.quantity);
-      if (!Number.isInteger(quantity) || quantity < 1 || !Number.isFinite(unitPrice) || unitPrice <= 0) {
-        return NextResponse.json({ error: 'Invalid product quantity or price' }, { status: 400 });
-      }
-      const itemTotal = unitPrice * quantity;
-      subtotal += itemTotal;
-
-      const sellerId = product?.sellerId || item.sellerId || 'casaio-direct';
-      sellerIdsSet.add(sellerId);
-
-      verifiedOrderItems.push({
-        productId: item.productId,
-        ...(typeof item.variantSku === 'string' && item.variantSku
-          ? { variantSku: item.variantSku }
-          : {}),
-        title: product?.title || item.title,
-        slug: product?.slug || item.slug,
-        imageUrl:
-          product?.images?.find((image: { isPrimary?: boolean }) => image.isPrimary)?.url ||
-          product?.images?.[0]?.url ||
-          (typeof item.imageUrl === 'string' ? item.imageUrl : ''),
-        unitPrice,
-        quantity,
-        totalPrice: itemTotal,
-        sellerId,
-        sellerStoreName: product?.sellerStoreName || item.sellerStoreName || 'Casaio Artisans',
-        fulfillmentStatus: 'pending',
-      });
+      const verified = validationRes.verifiedItem;
+      subtotal += verified.totalPrice;
+      sellerIdsSet.add(verified.sellerId);
+      verifiedOrderItems.push(verified);
     }
 
-    // 3. Validate coupon if provided
-    let discountAmount = 0;
-    let appliedCoupon: { code: string; discountValue: number } | undefined = undefined;
-
-    if (couponCode) {
-      const cleanCode = couponCode.trim().toUpperCase();
-      if (cleanCode === 'CASAIO10') {
-        discountAmount = Math.round(subtotal * 0.1);
-        appliedCoupon = { code: 'CASAIO10', discountValue: discountAmount };
-      } else if (cleanCode === 'WELCOME500' && subtotal >= 2999) {
-        discountAmount = 500;
-        appliedCoupon = { code: 'WELCOME500', discountValue: 500 };
+    // 3. Resolve coupon identity. Firestore coupon values are re-read and
+    // validated inside the order transaction before usage is consumed.
+    let couponRule: CouponRule | null = null;
+    let couponRef: FirebaseFirestore.DocumentReference | null = null;
+    if (couponCode !== undefined && couponCode !== null && typeof couponCode !== 'string') {
+      return NextResponse.json({ error: 'Invalid coupon code.' }, { status: 400 });
+    }
+    const cleanCouponCode = typeof couponCode === 'string' ? couponCode.trim().toUpperCase() : '';
+    if (cleanCouponCode) {
+      if (cleanCouponCode === 'CASAIO10') {
+        couponRule = {
+          code: 'CASAIO10',
+          discountType: 'percentage',
+          discountValue: 10,
+          isActive: true,
+        };
+      } else if (cleanCouponCode === 'WELCOME500') {
+        couponRule = {
+          code: 'WELCOME500',
+          discountType: 'flat',
+          discountValue: 500,
+          minOrderValue: 2999,
+          isActive: true,
+        };
       } else {
         const couponSnap = await adminDb
           .collection('coupons')
-          .where('code', '==', cleanCode)
-          .where('isActive', '==', true)
-          .limit(1)
+          .where('code', '==', cleanCouponCode)
+          .limit(2)
           .get();
-
-        if (!couponSnap.empty) {
-          const couponData = couponSnap.docs[0].data();
-          if (!couponData.minOrderValue || subtotal >= couponData.minOrderValue) {
-            if (couponData.discountType === 'percentage') {
-              discountAmount = Math.round((subtotal * couponData.discountValue) / 100);
-              if (couponData.maxDiscountAmount && discountAmount > couponData.maxDiscountAmount) {
-                discountAmount = couponData.maxDiscountAmount;
-              }
-            } else {
-              discountAmount = Math.min(couponData.discountValue, subtotal);
-            }
-            appliedCoupon = { code: cleanCode, discountValue: discountAmount };
-          }
+        if (couponSnap.empty) {
+          return NextResponse.json({ error: 'Invalid or expired coupon code.' }, { status: 400 });
         }
+        if (couponSnap.docs.length > 1) {
+          return NextResponse.json({ error: 'Coupon code is ambiguous. Please contact support.' }, { status: 409 });
+        }
+        couponRef = adminDb.collection('coupons').doc(couponSnap.docs[0].id);
       }
     }
-
-    const shippingFee = 0; // Complimentary white-glove courier shipping
-    const taxAmount = Math.round((subtotal - discountAmount) * 0.18);
-    // Catalog prices include GST; taxAmount is a displayed breakdown only.
-    const totalAmount = Math.max(0, subtotal - discountAmount + shippingFee);
 
     // 4. Determine initial statuses based on payment method
     const isCod = paymentMethod === 'cod';
@@ -307,44 +286,18 @@ export async function POST(req: NextRequest) {
     const checkoutFingerprint = createHash('sha256').update(JSON.stringify({
       items: verifiedOrderItems.map((item) => [item.productId, item.variantSku || '', item.quantity]),
       address: {
-        addressLine1: shippingAddress.addressLine1,
-        addressLine2: shippingAddress.addressLine2 || '',
-        city: shippingAddress.city,
-        state: shippingAddress.state,
-        postalCode: shippingAddress.postalCode,
-        country: shippingAddress.country,
-        phoneNumber: shippingAddress.phoneNumber || '',
+        addressLine1: cleanShippingAddress.addressLine1,
+        addressLine2: cleanShippingAddress.addressLine2 || '',
+        city: cleanShippingAddress.city,
+        state: cleanShippingAddress.state,
+        postalCode: cleanShippingAddress.postalCode,
+        country: cleanShippingAddress.country,
+        phoneNumber: cleanShippingAddress.phoneNumber || '',
       },
-      couponCode: appliedCoupon?.code || '',
+      couponCode: cleanCouponCode,
     })).digest('hex');
 
-    const orderRecord: Omit<Order, 'id'> = {
-      orderNumber,
-      customerId,
-      customerDetails: {
-        name: customerDetails.name,
-        email: customerDetails.email,
-        phone: customerDetails.phone || shippingAddress.phoneNumber,
-      },
-      shippingAddress: shippingAddress as UserAddress,
-      items: verifiedOrderItems,
-      sellerIds: Array.from(sellerIdsSet),
-      pricing: {
-        subtotal,
-        discountAmount,
-        shippingFee,
-        taxAmount,
-        totalAmount,
-      },
-      ...(appliedCoupon ? { couponApplied: appliedCoupon } : {}),
-      payment,
-      orderStatus,
-      statusTimeline: initialTimeline,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    // 5. Batch write: save order, deduct stock, and empty user's cart
+    // 5. Batch write: save order, atomically verify and deduct stock, and empty user's cart
     const cartRef = adminDb.collection('carts').doc(customerId);
     const transactionResult = await adminDb.runTransaction(async (transaction) => {
       const [existingRequest, activeAttempt, checkoutCoordination] = await Promise.all([
@@ -413,16 +366,74 @@ export async function POST(req: NextRequest) {
           ? { paid: true, orderId: activeOrderId as string, orderNumber: activeOrder.orderNumber, totalAmount: activeOrder.pricing?.totalAmount }
           : { blocked: true, orderId: typeof activeOrderId === 'string' ? activeOrderId : undefined };
       }
-      const productRefs = verifiedOrderItems.map((item) => adminDb.collection('products').doc(item.productId));
-      const productSnaps = await Promise.all(productRefs.map((ref) => transaction.get(ref)));
-      for (let index = 0; index < verifiedOrderItems.length; index++) {
-        const item = verifiedOrderItems[index];
-        const snap = productSnaps[index];
-        const stock = Number(snap.data()?.stock || 0);
-        if (!snap.exists || stock < item.quantity) {
-          throw new Error(`Insufficient stock for "${item.title}".`);
-        }
+
+      // Group items by productId so multiple items for the same product (e.g. variants) are verified & updated safely
+      const itemsByProductId = new Map<string, Array<{ variantSku?: string; quantity: number }>>();
+      for (const item of verifiedOrderItems) {
+        const list = itemsByProductId.get(item.productId) || [];
+        list.push({ variantSku: item.variantSku, quantity: item.quantity });
+        itemsByProductId.set(item.productId, list);
       }
+
+      const uniqueProductIds = Array.from(itemsByProductId.keys());
+      const productRefs = uniqueProductIds.map((id) => adminDb.collection('products').doc(id));
+      const productSnaps = await Promise.all(productRefs.map((ref) => transaction.get(ref)));
+      const couponSnap = couponRef ? await transaction.get(couponRef) : null;
+
+      const pendingStockUpdates: Array<{ ref: FirebaseFirestore.DocumentReference; payload: Record<string, unknown> }> = [];
+
+      for (let index = 0; index < uniqueProductIds.length; index++) {
+        const pId = uniqueProductIds[index];
+        const snap = productSnaps[index];
+        const reqItems = itemsByProductId.get(pId)!;
+
+        if (!snap.exists) {
+          return { failed: true, error: 'A product in your cart is no longer available in the catalogue.', status: 400 };
+        }
+
+        const productData = snap.data();
+        const stockResult = calculateStockUpdates(productData, reqItems);
+        if (!stockResult.isValid || !stockResult.updatePayload) {
+          return { failed: true, error: stockResult.error || 'Insufficient stock for one or more items.', status: 400 };
+        }
+
+        pendingStockUpdates.push({ ref: productRefs[index], payload: stockResult.updatePayload });
+      }
+
+      let currentCouponRule = couponRule;
+      if (couponRef) {
+        if (!couponSnap?.exists) {
+          return { failed: true, error: 'Coupon is no longer available.', status: 400 };
+        }
+        const couponValidation = validateFirestoreCoupon(couponSnap.data());
+        if (!couponValidation.isValid || !couponValidation.couponRule) {
+          return { failed: true, error: couponValidation.error || 'Coupon is invalid.', status: 400 };
+        }
+        currentCouponRule = couponValidation.couponRule;
+      }
+
+      const { pricing, appliedCoupon } = calculateAuthoritativePricing(subtotal, currentCouponRule);
+      const totalAmount = pricing.totalAmount;
+      const orderRecord: Omit<Order, 'id'> = {
+        orderNumber,
+        customerId,
+        customerDetails: {
+          name: customerDetails.name,
+          email: customerDetails.email,
+          phone: customerDetails.phone || cleanShippingAddress.phoneNumber,
+        },
+        shippingAddress: cleanShippingAddress,
+        items: verifiedOrderItems,
+        sellerIds: Array.from(sellerIdsSet),
+        pricing,
+        ...(appliedCoupon ? { couponApplied: appliedCoupon } : {}),
+        payment,
+        orderStatus,
+        statusTimeline: initialTimeline,
+        createdAt: now,
+        updatedAt: now,
+      };
+
       transaction.set(orderDocRef, orderRecord);
       if (!isCod) {
         transaction.set(activeAttemptRef, {
@@ -448,19 +459,28 @@ export async function POST(req: NextRequest) {
         paymentMethod,
         createdAt: now,
       });
-      for (let index = 0; index < verifiedOrderItems.length; index++) {
-        const item = verifiedOrderItems[index];
-        const productData = productSnaps[index].data();
-        transaction.update(productRefs[index], {
-          stock: Number(productData?.stock || 0) - item.quantity,
-          salesCount: Number(productData?.salesCount || 0) + item.quantity,
+
+      if (couponRef && appliedCoupon) {
+        transaction.update(couponRef, {
+          usageCount: (currentCouponRule?.usageCount ?? 0) + 1,
           updatedAt: now,
         });
       }
+
+      for (const update of pendingStockUpdates) {
+        transaction.update(update.ref, update.payload);
+      }
+
       transaction.set(cartRef, { userId: customerId, items: [], updatedAt: now });
       return { duplicate: false, orderId: orderDocRef.id, orderNumber, totalAmount, paymentMethod, paymentStatus };
     });
 
+    if ('failed' in transactionResult && transactionResult.failed) {
+      return NextResponse.json(
+        { error: transactionResult.error || 'Checkout validation failed' },
+        { status: transactionResult.status || 400 }
+      );
+    }
     if ('blocked' in transactionResult && transactionResult.blocked) {
       return NextResponse.json({
         error: transactionResult.paymentMethod === 'cod'
@@ -499,7 +519,7 @@ export async function POST(req: NextRequest) {
       await adminDb.collection('notifications').add({
         userId: customerId,
         title: `Order Confirmed: #${orderNumber}`,
-        message: `Your artisanal order #${orderNumber} for ₹${totalAmount.toLocaleString('en-IN')} has been placed successfully.`,
+        message: `Your artisanal order #${orderNumber} for ₹${transactionResult.totalAmount.toLocaleString('en-IN')} has been placed successfully.`,
         type: 'order',
         link: `/account/orders/${orderDocRef.id}`,
         read: false,
@@ -525,7 +545,7 @@ export async function POST(req: NextRequest) {
       success: true,
       orderId: orderDocRef.id,
       orderNumber,
-      totalAmount,
+      totalAmount: transactionResult.totalAmount,
       currency: 'INR',
       paymentMethod,
       paymentStatus,

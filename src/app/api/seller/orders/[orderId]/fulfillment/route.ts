@@ -2,6 +2,20 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import type { FulfillmentStatus, OrderStatus, OrderItem } from '@/types';
 import { requireServerRole } from '@/lib/firebase/server-auth';
+import {
+  isValidFulfillmentTransition,
+  computeOverallOrderStatus,
+  validatePaymentForFulfillment,
+  VALID_FULFILLMENT_STATUSES,
+} from '@/lib/orders/fulfillment-validation';
+import {
+  isSellerParticipantInOrder,
+  deriveSellerIdsFromItems,
+} from '@/lib/orders/legacy-compatibility';
+
+interface TransactionError extends Error {
+  statusCode?: number;
+}
 
 export async function POST(
   req: NextRequest,
@@ -10,6 +24,18 @@ export async function POST(
   try {
     const user = await requireServerRole(req, ['seller', 'admin']);
     if (!user) return NextResponse.json({ error: 'Seller access required' }, { status: 403 });
+
+    // Enforce authoritative seller approval status (admins bypass this check)
+    if (user.role !== 'admin') {
+      const sellerSnap = await adminDb.collection('sellers').doc(user.uid).get();
+      if (!sellerSnap.exists || sellerSnap.data()?.status !== 'approved') {
+        return NextResponse.json(
+          { error: 'An approved seller profile is required to fulfill orders' },
+          { status: 403 }
+        );
+      }
+    }
+
     const { orderId } = await params;
     const body = await req.json();
     const {
@@ -28,109 +54,138 @@ export async function POST(
         { status: 400 }
       );
     }
-    if (!['pending', 'processing', 'shipped', 'delivered', 'cancelled'].includes(fulfillmentStatus)) {
+    if (!VALID_FULFILLMENT_STATUSES.includes(fulfillmentStatus)) {
       return NextResponse.json({ error: 'Invalid fulfillment status' }, { status: 400 });
     }
 
     const orderRef = adminDb.collection('orders').doc(orderId);
-    const snap = await orderRef.get();
-
-    if (!snap.exists) {
-      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-    }
-
-    const orderData = snap.data();
     const now = new Date().toISOString();
 
-    if (orderData?.orderStatus === 'cancelled' || orderData?.cancellationStatus === 'processing') {
-      return NextResponse.json({ error: 'This order is cancelled or being cancelled' }, { status: 409 });
-    }
+    // Use a Firestore transaction to prevent lost updates when multiple vendors
+    // update line items on the same order concurrently.
+    const result = await adminDb.runTransaction(async (transaction) => {
+      const snap = await transaction.get(orderRef);
 
-    // Verify seller is part of this order
-    if (
-      !Array.isArray(orderData?.sellerIds) ||
-      !orderData.sellerIds.includes(sellerId)
-    ) {
-      return NextResponse.json(
-        { error: 'Unauthorized: you are not a vendor for this order' },
-        { status: 403 }
-      );
-    }
-
-    // Update matching items in the order
-    let updatedAny = false;
-    const items = (orderData?.items || []).map((item: OrderItem) => {
-      // If productId specified, update only that product, else update all items for this seller
-      if (
-        item.sellerId === sellerId &&
-        (!productId || item.productId === productId)
-      ) {
-        updatedAny = true;
-        const updatedTracking = {
-          ...(item.trackingDetails || {}),
-          carrier: carrier || item.trackingDetails?.carrier || 'Express Air Cargo',
-          trackingNumber: trackingNumber || item.trackingDetails?.trackingNumber || '',
-          trackingUrl: trackingUrl || item.trackingDetails?.trackingUrl || '',
-          estimatedDelivery: estimatedDelivery || item.trackingDetails?.estimatedDelivery || '',
-          ...(fulfillmentStatus === 'shipped' ? { shippedAt: now } : {}),
-        };
-
-        return {
-          ...item,
-          fulfillmentStatus: fulfillmentStatus as FulfillmentStatus,
-          trackingDetails: updatedTracking,
-        };
+      if (!snap.exists) {
+        const err: TransactionError = new Error('Order not found');
+        err.statusCode = 404;
+        throw err;
       }
-      return item;
-    });
 
-    if (!updatedAny) {
-      return NextResponse.json(
-        { error: 'No matching items found for this seller' },
-        { status: 400 }
+      const orderData = snap.data();
+
+      if (orderData?.orderStatus === 'cancelled' || orderData?.cancellationStatus === 'processing') {
+        const err: TransactionError = new Error('This order is cancelled or being cancelled');
+        err.statusCode = 409;
+        throw err;
+      }
+
+      // Block fulfillment of unpaid online orders using fresh transaction snapshot data
+      const paymentCheck = validatePaymentForFulfillment(orderData?.payment, fulfillmentStatus);
+      if (!paymentCheck.allowed) {
+        const err: TransactionError = new Error(paymentCheck.reason);
+        err.statusCode = 400;
+        throw err;
+      }
+
+      // Verify seller participation: check sellerIds array if present, or fallback to line items for legacy orders
+      const isSellerParticipant = isSellerParticipantInOrder(orderData, sellerId);
+
+      if (user.role !== 'admin' && !isSellerParticipant) {
+        const err: TransactionError = new Error('Unauthorized: you are not a vendor for this order');
+        err.statusCode = 403;
+        throw err;
+      }
+
+      // Validate transitions and update matching items
+      let updatedAny = false;
+      const items = (orderData?.items || []).map((item: OrderItem) => {
+        // If productId specified, update only that product; otherwise update all items for this seller
+        const isTargetItem =
+          (user.role === 'admin' || item.sellerId === sellerId) &&
+          (!productId || item.productId === productId);
+
+        if (isTargetItem) {
+          updatedAny = true;
+          const currentStatus: FulfillmentStatus = item.fulfillmentStatus || 'pending';
+          const transitionCheck = isValidFulfillmentTransition(currentStatus, fulfillmentStatus);
+
+          if (!transitionCheck.valid) {
+            const err: TransactionError = new Error(
+              transitionCheck.reason || `Invalid fulfillment transition for product "${item.title}"`
+            );
+            err.statusCode = 400;
+            throw err;
+          }
+
+          const updatedTracking = {
+            ...(item.trackingDetails || {}),
+            carrier: carrier || item.trackingDetails?.carrier || 'Express Air Cargo',
+            trackingNumber: trackingNumber || item.trackingDetails?.trackingNumber || '',
+            trackingUrl: trackingUrl || item.trackingDetails?.trackingUrl || '',
+            estimatedDelivery: estimatedDelivery || item.trackingDetails?.estimatedDelivery || '',
+            ...(fulfillmentStatus === 'shipped' ? { shippedAt: now } : {}),
+          };
+
+          return {
+            ...item,
+            fulfillmentStatus: fulfillmentStatus as FulfillmentStatus,
+            trackingDetails: updatedTracking,
+          };
+        }
+        return item;
+      });
+
+      if (!updatedAny) {
+        const err: TransactionError = new Error('No matching items found for this seller');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      // Derive aggregate orderStatus across all items using pure domain rules
+      const newOrderStatus: OrderStatus = computeOverallOrderStatus(
+        items,
+        orderData?.orderStatus || 'pending'
       );
-    }
 
-    // Determine overall orderStatus: if all items are delivered -> delivered, if all items shipped -> shipped, etc.
-    let newOrderStatus: OrderStatus = orderData?.orderStatus;
-    const allItemsShipped = items.every(
-      (i: OrderItem) => i.fulfillmentStatus === 'shipped' || i.fulfillmentStatus === 'delivered'
-    );
-    const allItemsDelivered = items.every((i: OrderItem) => i.fulfillmentStatus === 'delivered');
+      // Append milestone event to timeline
+      const timelineEvent = {
+        status: fulfillmentStatus,
+        timestamp: now,
+        note: `Vendor dispatched milestone update: status set to "${fulfillmentStatus}"${
+          trackingNumber ? ` via ${carrier || 'Courier'} (Tracking: ${trackingNumber})` : ''
+        }.`,
+        updatedBy: sellerId,
+      };
 
-    if (allItemsDelivered) {
-      newOrderStatus = 'delivered';
-    } else if (allItemsShipped) {
-      newOrderStatus = 'shipped';
-    } else if (fulfillmentStatus === 'processing' && newOrderStatus === 'pending') {
-      newOrderStatus = 'processing';
-    }
+      const updatedTimeline = [...(orderData?.statusTimeline || []), timelineEvent];
 
-    // Add event to timeline
-    const timelineEvent = {
-      status: fulfillmentStatus,
-      timestamp: now,
-      note: `Vendor dispatched milestone update: status set to "${fulfillmentStatus}"${
-        trackingNumber ? ` via ${carrier || 'Courier'} (Tracking: ${trackingNumber})` : ''
-      }.`,
-      updatedBy: sellerId,
-    };
+      const orderUpdates: Record<string, unknown> = {
+        items,
+        orderStatus: newOrderStatus,
+        statusTimeline: updatedTimeline,
+        updatedAt: now,
+      };
 
-    const updatedTimeline = [...(orderData?.statusTimeline || []), timelineEvent];
+      // Opportunistically backfill sellerIds on legacy orders
+      if (!Array.isArray(orderData?.sellerIds)) {
+        orderUpdates.sellerIds = deriveSellerIdsFromItems(items);
+      }
 
-    await orderRef.update({
-      items,
-      orderStatus: newOrderStatus,
-      statusTimeline: updatedTimeline,
-      updatedAt: now,
+      transaction.update(orderRef, orderUpdates);
+
+      return {
+        orderData,
+        newOrderStatus,
+      };
     });
 
-    // Notify customer about fulfillment progress
-    if (orderData?.customerId) {
+    // Notify customer about fulfillment progress (non-blocking)
+    if (result.orderData?.customerId) {
       try {
         await adminDb.collection('notifications').add({
-          userId: orderData.customerId,
-          title: `Shipment Update: #${orderData.orderNumber || orderId.slice(0, 8)}`,
+          userId: result.orderData.customerId,
+          title: `Shipment Update: #${result.orderData.orderNumber || orderId.slice(0, 8)}`,
           message: `Your item has been marked as "${fulfillmentStatus}".${
             trackingNumber ? ` Tracking #${trackingNumber} via ${carrier || 'Courier'}.` : ''
           }`,
@@ -147,11 +202,12 @@ export async function POST(
     return NextResponse.json({
       success: true,
       message: 'Fulfillment and tracking details updated',
-      orderStatus: newOrderStatus,
+      orderStatus: result.newOrderStatus,
     });
   } catch (error: unknown) {
     console.error('Order fulfillment update error:', error);
     const msg = error instanceof Error ? error.message : 'Failed to update order fulfillment';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const status = (error as TransactionError)?.statusCode || 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 }

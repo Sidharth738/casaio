@@ -10,7 +10,7 @@ import {
   MapPin,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import type { Order } from '@/types';
+import type { SellerOrder } from '@/lib/orders/seller-projection';
 import { getSellerOrders } from '@/lib/firebase/firestore';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -18,7 +18,7 @@ import { formatCurrency, formatDate } from '@/lib/utils';
 
 export default function SellerOrdersPage() {
   const { user } = useAuth();
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [orders, setOrders] = useState<SellerOrder[]>([]);
   const [isFetched, setIsFetched] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'shipped' | 'delivered'>('all');

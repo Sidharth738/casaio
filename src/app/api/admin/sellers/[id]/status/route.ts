@@ -32,12 +32,23 @@ export async function POST(
 
     const now = new Date().toISOString();
 
-    // 1. Update the seller document
-    await sellerRef.update({
+    // Application-submitted values are not trusted financial or metric data.
+    // Reset those values whenever a non-approved application is approved.
+    const sellerUpdates: Record<string, unknown> = {
       status,
       statusReason: statusReason || null,
       updatedAt: now,
-    });
+    };
+    if (status === 'approved' && snap.data()?.status !== 'approved') {
+      sellerUpdates.commissionRatePercent = 10;
+      sellerUpdates.metrics = {
+        totalSalesAmount: 0,
+        totalOrdersCount: 0,
+        ratingAverage: 5,
+        ratingCount: 0,
+      };
+    }
+    await sellerRef.update(sellerUpdates);
 
     // 2. If approved, promote user role in both Firestore and Firebase Auth Custom Claims
     const userRef = adminDb.collection('users').doc(id);
@@ -52,8 +63,8 @@ export async function POST(
       } catch (authErr) {
         console.warn('Failed setting custom claim for seller, continuing with doc role:', authErr);
       }
-    } else if (status === 'suspended' || status === 'rejected') {
-      // Revert role back to customer if rejected or suspended
+    } else {
+      // Revert role back to customer if rejected, suspended, or moved back to pending
       await userRef.update({
         role: 'customer',
         updatedAt: now,
@@ -61,8 +72,9 @@ export async function POST(
 
       try {
         await adminAuth.setCustomUserClaims(id, { role: 'customer' });
+        await adminAuth.revokeRefreshTokens(id);
       } catch (authErr) {
-        console.warn('Failed reverting custom claim for seller:', authErr);
+        console.warn('Failed reverting custom claim or revoking refresh tokens for seller:', authErr);
       }
     }
 

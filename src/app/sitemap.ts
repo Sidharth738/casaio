@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
-import { getCategories, getProducts } from '@/lib/firebase/firestore';
+import { getCategories } from '@/lib/firebase/firestore';
+import { getPublicProducts } from '@/lib/firebase/server-catalog';
 
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://casaio.app';
 
@@ -63,8 +64,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // ── Dynamic product routes ─────────────────────────────────────────────────
   let productRoutes: MetadataRoute.Sitemap = [];
   try {
-    const { products } = await getProducts({});
-    productRoutes = products.map((product) => ({
+    const products = await getPublicProducts();
+    productRoutes = products.slice(0, 20).map((product) => ({
       url: `${BASE_URL}/products/${product.slug}`,
       lastModified: product.updatedAt ? new Date(product.updatedAt) : now,
       changeFrequency: 'weekly' as const,

@@ -13,8 +13,6 @@ import {
 import { useAuth } from '@/hooks/useAuth';
 import type { SellerProfile } from '@/types';
 import { getSellerProfile } from '@/lib/firebase/firestore';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase/client';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
@@ -84,7 +82,6 @@ export default function SellerProfilePage() {
     setError(null);
 
     try {
-      const sellerRef = doc(db, 'sellers', user.uid);
       const updated = {
         storeName,
         storeEmail,
@@ -103,10 +100,15 @@ export default function SellerProfilePage() {
           ifscCode,
           upiId,
         },
-        updatedAt: new Date().toISOString(),
       };
 
-      await updateDoc(sellerRef, updated);
+      const response = await fetch('/api/seller/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to update seller profile');
       setSuccess('Store profile and payout details saved successfully!');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to update store profile';

@@ -17,6 +17,13 @@ export const ProductImageSchema = z.object({
   isPrimary: z.boolean(),
 });
 
+const SellerProductImageSchema = z.object({
+  url: z.string().url().regex(/^https?:\/\//),
+  path: z.string(),
+  altText: z.string().max(200).optional(),
+  isPrimary: z.boolean(),
+});
+
 export const ProductVariantSchema = z.object({
   sku: z.string().min(1).max(100),
   title: z.string().min(1).max(200),
@@ -53,6 +60,27 @@ export const ProductSchema = z.object({
 export const CreateProductSchema = ProductSchema;
 export const UpdateProductSchema = ProductSchema.partial().omit({ sellerId: true });
 
+// Sellers may edit fields exposed by ProductForm and inventory controls. Keep
+// storefront metrics, ownership, timestamps, and moderation fields server-owned.
+export const SellerProductUpdateSchema = z.object({
+  title: ProductSchema.shape.title.optional(),
+  slug: ProductSchema.shape.slug.optional(),
+  description: ProductSchema.shape.description.optional(),
+  shortDescription: ProductSchema.shape.shortDescription.optional(),
+  price: ProductSchema.shape.price.optional(),
+  compareAtPrice: ProductSchema.shape.compareAtPrice.optional(),
+  costPerItem: ProductSchema.shape.costPerItem.optional(),
+  sku: ProductSchema.shape.sku.optional(),
+  stock: ProductSchema.shape.stock.optional(),
+  lowStockThreshold: z.number().int().min(0).optional(),
+  categoryId: ProductSchema.shape.categoryId.optional(),
+  categorySlug: ProductSchema.shape.categorySlug.optional(),
+  tags: z.array(z.string()).max(20).optional(),
+  images: z.array(SellerProductImageSchema).min(1).max(10).optional(),
+  status: z.enum(['draft', 'active', 'out_of_stock', 'archived']).optional(),
+}).strict();
+
 export type CategoryInput = z.infer<typeof CategorySchema>;
 export type ProductInput = z.infer<typeof ProductSchema>;
 export type UpdateProductInput = z.infer<typeof UpdateProductSchema>;
+export type SellerProductUpdateInput = z.infer<typeof SellerProductUpdateSchema>;

@@ -63,7 +63,13 @@ export async function POST(req: NextRequest) {
       createdAt: now,
       updatedAt: now,
     };
-    await ref.set(product);
+    const { costPerItem, ...publicProduct } = product;
+    const productBatch = adminDb.batch();
+    productBatch.set(ref, publicProduct);
+    if (costPerItem !== undefined) {
+      productBatch.set(adminDb.collection('productPrivate').doc(ref.id), { costPerItem });
+    }
+    await productBatch.commit();
     revalidatePath('/', 'page');
     revalidatePath(`/products/${slug}`);
     return NextResponse.json({ success: true, product }, { status: 201 });

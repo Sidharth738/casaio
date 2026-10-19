@@ -21,6 +21,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './client';
 import type { Product, Category, ProductFilterParams } from '@/types';
+import type { SellerOrder } from '@/lib/orders/seller-projection';
 
 // ─── Generic helpers ──────────────────────────────────────────────────────────
 
@@ -80,11 +81,12 @@ export async function getProducts(
   filters: ProductFilterParams = {},
   cursor?: QueryDocumentSnapshot<DocumentData>
 ): Promise<ProductPage> {
-  // Apply storefront filters and ordering in memory. This avoids the compound
-  // index requirements that previously made the catalogue silently look empty.
-  const q = query(collection(db, 'products'), where('status', '==', 'active'), limit(500));
-  const snap = await getDocs(q);
-  let products = snap.docs.map((d) => docToData<Product>(d));
+  // Public catalogue reads go through a server projection that omits private
+  // seller cost fields. Seller/admin product reads remain direct and authorized.
+  const response = await fetch('/api/catalog/products', { cache: 'no-store' });
+  if (!response.ok) throw new Error('Unable to load the product catalogue');
+  const payload = await response.json() as { products?: Product[] };
+  let products = payload.products || [];
   if (filters.category) products = products.filter((product) => product.categorySlug === filters.category);
   if (filters.inStockOnly) products = products.filter((product) => product.stock > 0);
   if (filters.minPrice !== undefined) products = products.filter((product) => product.price >= filters.minPrice!);
@@ -114,7 +116,7 @@ export async function getProducts(
 
   return {
     products: pageProducts,
-    lastDoc: pageProducts.length > 0 ? snap.docs.find((d) => d.id === pageProducts[pageProducts.length - 1].id) ?? null : null,
+    lastDoc: pageProducts.length > 0 ? null : null,
     hasMore,
   };
 }
@@ -123,15 +125,10 @@ export async function getProducts(
  * Fetch a single product by its slug.
  */
 export async function getProductBySlug(slug: string): Promise<Product | null> {
-  const q = query(
-    collection(db, 'products'),
-    where('slug', '==', slug),
-    limit(1)
-  );
-  const snap = await getDocs(q);
-  if (snap.empty) return null;
-  const product = docToData<Product>(snap.docs[0]);
-  return product.status === 'active' ? product : null;
+  const response = await fetch(`/api/catalog/products?slug=${encodeURIComponent(slug)}`, { cache: 'no-store' });
+  if (!response.ok) throw new Error('Unable to load the product');
+  const payload = await response.json() as { product?: Product | null };
+  return payload.product || null;
 }
 
 /**
@@ -140,7 +137,17 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
 export async function getProductById(id: string): Promise<Product | null> {
   const snap = await getDoc(doc(db, 'products', id));
   if (!snap.exists()) return null;
-  return { id: snap.id, ...snap.data() } as Product;
+  const product = { id: snap.id, ...snap.data() } as Product;
+  try {
+    const privateSnap = await getDoc(doc(db, 'productPrivate', id));
+    const costPerItem = privateSnap.data()?.costPerItem ?? product.costPerItem;
+    return costPerItem === undefined ? product : { ...product, costPerItem: Number(costPerItem) };
+  } catch {
+    // Public or non-owner reads are not permitted to inspect private cost data.
+    const publicProduct = { ...product };
+    delete publicProduct.costPerItem;
+    return publicProduct as Product;
+  }
 }
 
 /**
@@ -169,16 +176,8 @@ export async function getRelatedProducts(
  */
 export async function searchProducts(searchQuery: string, maxResults = 20): Promise<Product[]> {
   if (!searchQuery.trim()) return [];
-  const end = searchQuery + '\uf8ff';
-  const q = query(
-    collection(db, 'products'),
-    where('status', '==', 'active'),
-    where('title', '>=', searchQuery),
-    where('title', '<=', end),
-    limit(maxResults)
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => docToData<Product>(d));
+  const { products } = await getProducts({ searchQuery });
+  return products.slice(0, maxResults);
 }
 
 // ─── Addresses ────────────────────────────────────────────────────────────────
@@ -420,36 +419,42 @@ export async function getSellerProducts(sellerId: string): Promise<Product[]> {
       orderBy('createdAt', 'desc')
     );
     const snap = await getDocs(q);
-    return snap.docs.map((d) => docToData<Product>(d));
+    return Promise.all(snap.docs.map((d) => getProductById(d.id).then((product) => product || docToData<Product>(d))));
   } catch {
     const fallbackQ = query(
       collection(db, 'products'),
       where('sellerId', '==', sellerId)
     );
     const snap = await getDocs(fallbackQ);
-    const items = snap.docs.map((d) => docToData<Product>(d));
+    const items = await Promise.all(snap.docs.map((d) => getProductById(d.id).then((product) => product || docToData<Product>(d))));
     return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 }
 
-export async function getSellerOrders(sellerId: string): Promise<Order[]> {
-  if (!sellerId) return [];
+export async function getSellerOrders(sellerId?: string): Promise<SellerOrder[]> {
   try {
-    const q = query(
-      collection(db, 'orders'),
-      where('sellerIds', 'array-contains', sellerId),
-      orderBy('createdAt', 'desc')
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => docToData<Order>(d));
+    const url = sellerId ? `/api/seller/orders?sellerId=${encodeURIComponent(sellerId)}` : '/api/seller/orders';
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.orders || [];
   } catch {
-    const fallbackQ = query(
-      collection(db, 'orders'),
-      where('sellerIds', 'array-contains', sellerId)
-    );
-    const snap = await getDocs(fallbackQ);
-    const items = snap.docs.map((d) => docToData<Order>(d));
-    return items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return [];
+  }
+}
+
+export async function getSellerOrderById(orderId: string, sellerId?: string): Promise<SellerOrder | null> {
+  if (!orderId) return null;
+  try {
+    const url = sellerId
+      ? `/api/seller/orders/${encodeURIComponent(orderId)}?sellerId=${encodeURIComponent(sellerId)}`
+      : `/api/seller/orders/${encodeURIComponent(orderId)}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.order || null;
+  } catch {
+    return null;
   }
 }
 
@@ -457,7 +462,6 @@ export async function updateProductStock(productId: string, newStock: number): P
   const pRef = doc(db, 'products', productId);
   await updateDoc(pRef, {
     stock: Math.max(0, newStock),
-    status: newStock <= 0 ? 'out_of_stock' : 'active',
     updatedAt: new Date().toISOString(),
   });
 }
@@ -481,10 +485,10 @@ export async function getAllProductsAdmin(): Promise<Product[]> {
   try {
     const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'));
     const snap = await getDocs(q);
-    return snap.docs.map((d) => docToData<Product>(d));
+    return Promise.all(snap.docs.map((d) => getProductById(d.id).then((product) => product || docToData<Product>(d))));
   } catch {
     const snap = await getDocs(collection(db, 'products'));
-    return snap.docs.map((d) => docToData<Product>(d));
+    return Promise.all(snap.docs.map((d) => getProductById(d.id).then((product) => product || docToData<Product>(d))));
   }
 }
 

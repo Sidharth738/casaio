@@ -49,10 +49,7 @@ export default function EditProductPage() {
       const res = await fetch(`/api/seller/products/${productId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...productData,
-          sellerId: user.uid,
-        }),
+        body: JSON.stringify(productData),
       });
 
       const data = await res.json();

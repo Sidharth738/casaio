@@ -6,7 +6,8 @@ import { ChevronRight, Layers } from 'lucide-react';
 import { Container } from '@/components/ui/Container';
 import { ProductCard } from '@/components/product/ProductCard';
 import { CategorySortSelect } from '@/components/product/CategorySortSelect';
-import { getCategoryBySlug, getProducts } from '@/lib/firebase/firestore';
+import { getCategoryBySlug } from '@/lib/firebase/firestore';
+import { getPublicProductPage } from '@/lib/firebase/server-catalog';
 import type { Product, Category } from '@/types';
 
 interface PageProps {
@@ -53,7 +54,7 @@ async function CategoryProducts({
 }) {
   let products: Product[] = [];
   try {
-    const result = await getProducts({ category: categorySlug, sortBy });
+    const result = await getPublicProductPage({ category: categorySlug, sortBy });
     products = result.products;
   } catch {
     products = [];

@@ -11,7 +11,7 @@
  */
 
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
@@ -613,7 +613,11 @@ async function seed() {
   const prodBatch = db.batch();
   for (const prod of products) {
     const ref = db.collection('products').doc(prod.id);
-    prodBatch.set(ref, prod, { merge: true });
+    const { costPerItem, ...publicProduct } = prod;
+    prodBatch.set(ref, { ...publicProduct, costPerItem: FieldValue.delete() }, { merge: true });
+    if (costPerItem !== undefined) {
+      prodBatch.set(db.collection('productPrivate').doc(prod.id), { costPerItem }, { merge: true });
+    }
   }
   await prodBatch.commit();
   console.log(`✅ Products written successfully.`);
