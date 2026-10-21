@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import type { FulfillmentStatus, OrderStatus, OrderItem } from '@/types';
 import { requireServerRole } from '@/lib/firebase/server-auth';
+import { getCouponUserUsageRefs } from '@/lib/coupons/user-usage';
 import {
   isValidFulfillmentTransition,
   computeOverallOrderStatus,
@@ -148,6 +149,40 @@ export async function POST(
         orderData?.orderStatus || 'pending'
       );
 
+      let deliveredCouponReservation: FirebaseFirestore.DocumentReference | null = null;
+      let consumeDeliveredCouponSlot = false;
+      const couponId = orderData?.couponApplied?.couponId;
+      if (newOrderStatus === 'delivered' && orderData?.payment?.method === 'cod' &&
+          typeof couponId === 'string' && typeof orderData?.customerId === 'string') {
+        const refs = getCouponUserUsageRefs(adminDb, couponId, orderData.customerId, orderId);
+        const [usageSnap, reservationSnap] = await Promise.all([
+          transaction.get(refs.usageRef),
+          transaction.get(refs.reservationRef),
+        ]);
+        if (usageSnap.exists || reservationSnap.exists) {
+          if (!usageSnap.exists || usageSnap.data()?.state !== 'ready' || !reservationSnap.exists) {
+            const err: TransactionError = new Error('Coupon usage requires reconciliation before delivery can be recorded');
+            err.statusCode = 409;
+            throw err;
+          }
+          const reservation = reservationSnap.data();
+          if (reservation?.couponId !== couponId || reservation?.customerId !== orderData.customerId ||
+              reservation?.orderId !== orderId) {
+            const err: TransactionError = new Error('Coupon delivery reservation does not match the order');
+            err.statusCode = 409;
+            throw err;
+          }
+          if (reservation.state === 'awaiting_delivery') {
+            deliveredCouponReservation = refs.reservationRef;
+            consumeDeliveredCouponSlot = true;
+          } else if (reservation.state !== 'consumed') {
+            const err: TransactionError = new Error('Coupon delivery reservation is not available');
+            err.statusCode = 409;
+            throw err;
+          }
+        }
+      }
+
       // Append milestone event to timeline
       const timelineEvent = {
         status: fulfillmentStatus,
@@ -173,6 +208,9 @@ export async function POST(
       }
 
       transaction.update(orderRef, orderUpdates);
+      if (consumeDeliveredCouponSlot && deliveredCouponReservation) {
+        transaction.update(deliveredCouponReservation, { state: 'consumed', updatedAt: now });
+      }
 
       return {
         orderData,

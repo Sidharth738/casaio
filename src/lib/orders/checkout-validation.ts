@@ -1,4 +1,25 @@
 import type { OrderItem, OrderPricing, ProductVariant, UserAddress } from '@/types';
+import { paiseToRupees, rupeesToPaise } from '@/lib/orders/money';
+
+const GST_RATE_PERCENT = 18;
+const GST_INCLUSIVE_DENOMINATOR = 100 + GST_RATE_PERCENT;
+export const GST_RATE = GST_RATE_PERCENT / 100;
+
+function calculateIncludedGstPaise(payableItemsTotalPaise: number) {
+  const quotient = Math.floor(payableItemsTotalPaise / GST_INCLUSIVE_DENOMINATOR);
+  const remainder = payableItemsTotalPaise % GST_INCLUSIVE_DENOMINATOR;
+  return quotient * GST_RATE_PERCENT + Math.round((remainder * GST_RATE_PERCENT) / GST_INCLUSIVE_DENOMINATOR);
+}
+
+export function getInclusiveGstBreakdown(payableItemsTotal: number) {
+  const payableItemsTotalPaise = rupeesToPaise(payableItemsTotal);
+  const gstPaise = calculateIncludedGstPaise(payableItemsTotalPaise);
+  return {
+    payableItemsTotal: paiseToRupees(payableItemsTotalPaise),
+    taxAmount: paiseToRupees(gstPaise),
+    preTaxAmount: paiseToRupees(payableItemsTotalPaise - gstPaise),
+  };
+}
 
 export interface ValidatedShippingAddressResult {
   isValid: boolean;
@@ -25,10 +46,20 @@ export interface CouponRule {
   isActive?: boolean;
 }
 
+export interface FirestoreCouponRule extends CouponRule {
+  minOrderValue: number;
+  validFrom: string;
+  validUntil: string;
+  usageLimit: number;
+  usageCount: number;
+  perUserLimit: number;
+  isActive: true;
+}
+
 export interface FirestoreCouponValidationResult {
   isValid: boolean;
   error?: string;
-  couponRule?: CouponRule;
+  couponRule?: FirestoreCouponRule;
 }
 
 /**
@@ -47,13 +78,14 @@ export function validateFirestoreCoupon(
 
   const data = value as Record<string, unknown>;
   if (data.isActive !== true) return { isValid: false, error: 'Coupon is inactive.' };
-  if (typeof data.code !== 'string' || !data.code.trim()) {
+  if (typeof data.code !== 'string' || !data.code.trim() || data.code !== data.code.trim().toUpperCase()) {
     return { isValid: false, error: 'Coupon configuration is invalid.' };
   }
   if (data.discountType !== 'percentage' && data.discountType !== 'flat') {
     return { isValid: false, error: 'Coupon configuration is invalid.' };
   }
-  if (typeof data.discountValue !== 'number' || !Number.isFinite(data.discountValue) || data.discountValue < 0) {
+  if (typeof data.discountValue !== 'number' || !Number.isFinite(data.discountValue) || data.discountValue <= 0 ||
+      (data.discountType === 'percentage' && data.discountValue > 100)) {
     return { isValid: false, error: 'Coupon configuration is invalid.' };
   }
 
@@ -64,6 +96,11 @@ export function validateFirestoreCoupon(
   }
   if (now.getTime() < validFrom || now.getTime() > validUntil) {
     return { isValid: false, error: 'Coupon is expired or not yet valid.' };
+  }
+
+  if (typeof data.minOrderValue !== 'number' || !Number.isFinite(data.minOrderValue) || data.minOrderValue < 0 ||
+      !Number.isSafeInteger(data.perUserLimit) || (data.perUserLimit as number) < 1) {
+    return { isValid: false, error: 'Coupon configuration is invalid.' };
   }
 
   const usageLimit = data.usageLimit;
@@ -81,7 +118,7 @@ export function validateFirestoreCoupon(
   if (minOrderValue !== undefined && (typeof minOrderValue !== 'number' || !Number.isFinite(minOrderValue) || minOrderValue < 0)) {
     return { isValid: false, error: 'Coupon configuration is invalid.' };
   }
-  if (maxDiscountAmount !== undefined && (typeof maxDiscountAmount !== 'number' || !Number.isFinite(maxDiscountAmount) || maxDiscountAmount < 0)) {
+  if (maxDiscountAmount !== undefined && (typeof maxDiscountAmount !== 'number' || !Number.isFinite(maxDiscountAmount) || maxDiscountAmount <= 0)) {
     return { isValid: false, error: 'Coupon configuration is invalid.' };
   }
 
@@ -91,12 +128,13 @@ export function validateFirestoreCoupon(
       code: data.code.trim().toUpperCase(),
       discountType: data.discountType,
       discountValue: data.discountValue,
-      minOrderValue: minOrderValue as number | undefined,
+      minOrderValue: minOrderValue as number,
       maxDiscountAmount: maxDiscountAmount as number | undefined,
       validFrom: data.validFrom as string,
       validUntil: data.validUntil as string,
       usageLimit: usageLimit as number,
       usageCount: usageCount as number,
+      perUserLimit: data.perUserLimit as number,
       isActive: true,
     },
   };
@@ -220,6 +258,13 @@ export function validatePurchasableProduct(
     if (!Number.isFinite(vPrice) || vPrice <= 0) {
       return { isValid: false, error: 'Invalid variant price configuration in catalogue.' };
     }
+    let vPricePaise: number;
+    try {
+      vPricePaise = rupeesToPaise(vPrice);
+    } catch {
+      return { isValid: false, error: 'Invalid variant price configuration in catalogue.' };
+    }
+    if (vPricePaise <= 0) return { isValid: false, error: 'Invalid variant price configuration in catalogue.' };
 
     const vStock = Number(matchedVariant.stock ?? 0);
     if (vStock < quantity) {
@@ -229,7 +274,7 @@ export function validatePurchasableProduct(
       };
     }
 
-    authoritativePrice = vPrice;
+    authoritativePrice = paiseToRupees(vPricePaise);
     variantSku = matchedVariant.sku;
     itemTitle = matchedVariant.title
       ? `${typeof productData.title === 'string' ? productData.title : 'Product'} (${matchedVariant.title})`
@@ -251,6 +296,13 @@ export function validatePurchasableProduct(
     if (!Number.isFinite(pPrice) || pPrice <= 0) {
       return { isValid: false, error: 'Invalid product price configuration in catalogue.' };
     }
+    let pPricePaise: number;
+    try {
+      pPricePaise = rupeesToPaise(pPrice);
+    } catch {
+      return { isValid: false, error: 'Invalid product price configuration in catalogue.' };
+    }
+    if (pPricePaise <= 0) return { isValid: false, error: 'Invalid product price configuration in catalogue.' };
 
     const pStock = Number(productData.stock ?? 0);
     if (pStock < quantity) {
@@ -260,7 +312,7 @@ export function validatePurchasableProduct(
       };
     }
 
-    authoritativePrice = pPrice;
+    authoritativePrice = paiseToRupees(pPricePaise);
   }
 
   // 4. Server-authoritative seller details
@@ -301,10 +353,16 @@ export function calculateAuthoritativePricing(
   subtotal: number,
   coupon?: CouponRule | null
 ): { pricing: OrderPricing; appliedCoupon?: { code: string; discountValue: number } } {
+  const subtotalPaise = rupeesToPaise(subtotal);
+  const normalizedSubtotal = paiseToRupees(subtotalPaise);
   let discountAmount = 0;
   let appliedCoupon: { code: string; discountValue: number } | undefined = undefined;
 
-  if (coupon && coupon.isActive !== false) {
+  const validMaximumDiscount = coupon?.maxDiscountAmount === undefined ||
+    (typeof coupon.maxDiscountAmount === 'number' && Number.isFinite(coupon.maxDiscountAmount) && coupon.maxDiscountAmount > 0);
+  const validDiscount = coupon && Number.isFinite(coupon.discountValue) && coupon.discountValue >= 0 &&
+    (coupon.discountType === 'percentage' || coupon.discountType === 'flat') && validMaximumDiscount;
+  if (coupon && coupon.isActive !== false && validDiscount) {
     const now = new Date().toISOString();
 
     const isDateValid = (!coupon.validFrom || coupon.validFrom <= now) &&
@@ -314,32 +372,45 @@ export function calculateAuthoritativePricing(
       (typeof coupon.usageCount === 'number' && Number.isSafeInteger(coupon.usageCount) &&
         coupon.usageCount >= 0 && coupon.usageCount < coupon.usageLimit);
 
-    const meetsMinOrder = !coupon.minOrderValue || subtotal >= coupon.minOrderValue;
+    const meetsMinOrder = !coupon.minOrderValue || normalizedSubtotal >= coupon.minOrderValue;
 
     if (isDateValid && isUsageValid && meetsMinOrder) {
       if (coupon.discountType === 'percentage') {
-        discountAmount = Math.round((subtotal * coupon.discountValue) / 100);
-        if (coupon.maxDiscountAmount && discountAmount > coupon.maxDiscountAmount) {
+        discountAmount = Math.round((normalizedSubtotal * coupon.discountValue) / 100);
+        if (coupon.maxDiscountAmount !== undefined && discountAmount > coupon.maxDiscountAmount) {
           discountAmount = coupon.maxDiscountAmount;
         }
       } else {
-        discountAmount = Math.min(coupon.discountValue, subtotal);
+        discountAmount = Math.min(coupon.discountValue, normalizedSubtotal);
       }
       appliedCoupon = { code: coupon.code, discountValue: discountAmount };
     }
   }
 
-  const shippingFee = 0; // Complimentary white-glove courier shipping
-  const taxAmount = Math.round(Math.max(0, subtotal - discountAmount) * 0.18);
-  const totalAmount = Math.max(0, subtotal - discountAmount + shippingFee);
+  const discountAmountPaise = Math.min(subtotalPaise, rupeesToPaise(discountAmount));
+  const discountedItemsPaise = Math.max(0, subtotalPaise - discountAmountPaise);
+  const gstPaise = calculateIncludedGstPaise(discountedItemsPaise);
+  const shippingFeePaise = 0; // Complimentary white-glove courier shipping
+  const totalAmountPaise = discountedItemsPaise + shippingFeePaise;
+  const pricingSubtotal = paiseToRupees(subtotalPaise);
+  discountAmount = paiseToRupees(discountAmountPaise);
+  if (appliedCoupon) appliedCoupon.discountValue = discountAmount;
+  const payableItemsTotal = paiseToRupees(discountedItemsPaise);
+  const shippingFee = paiseToRupees(shippingFeePaise);
+  const taxAmount = paiseToRupees(gstPaise);
+  const preTaxAmount = paiseToRupees(discountedItemsPaise - gstPaise);
+  const totalAmount = paiseToRupees(totalAmountPaise);
 
   return {
     pricing: {
-      subtotal,
+      subtotal: pricingSubtotal,
       discountAmount,
       shippingFee,
       taxAmount,
       totalAmount,
+      payableItemsTotal,
+      taxRate: GST_RATE,
+      preTaxAmount,
     },
     appliedCoupon,
   };

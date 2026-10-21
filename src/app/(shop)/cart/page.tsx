@@ -210,8 +210,8 @@ export default function CartPage() {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Taxes (GST)</span>
-                  <span className="text-zinc-500 italic">Included in pricing</span>
+                  <span>GST (18%)</span>
+                  <span className="text-zinc-500 italic">Included in item prices</span>
                 </div>
               </div>
 

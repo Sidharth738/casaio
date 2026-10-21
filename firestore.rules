@@ -247,7 +247,15 @@ service cloud.firestore {
 
       allow read: if isAuthenticated() || isAdmin();
 
-      allow write: if isAdmin();
+      // Coupon definitions and usage counters are managed only by trusted
+      // server routes. Admin UI writes must pass through those routes.
+      allow write: if false;
+    }
+
+    // Normalized-code reservations are server-owned and permanent so a
+    // deactivated or deleted coupon code cannot be reused by clients.
+    match /couponCodes/{codeId} {
+      allow read, write: if false;
     }
 
     // =========================================================================

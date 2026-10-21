@@ -303,79 +303,44 @@ export async function validateCouponCode(code: string, subtotal: number): Promis
   }
 
   try {
-    const q = query(
-      collection(db, 'coupons'),
-      where('code', '==', cleanCode),
-      where('isActive', '==', true),
-      limit(1)
-    );
-    const snap = await getDocs(q);
+    const snap = await getDocs(collection(db, 'coupons'));
+    const matches = snap.docs.filter((item) => {
+      const storedCode = item.data().code;
+      return typeof storedCode === 'string' && storedCode.trim().toUpperCase() === cleanCode;
+    });
 
-    if (snap.empty) {
-      // Check hardcoded promotional coupons for dev / staging
-      if (cleanCode === 'CASAIO10') {
-        const discountAmount = Math.round(subtotal * 0.1);
-        return {
-          isValid: true,
-          discountAmount,
-          message: '10% artisanal promotional discount applied!',
-          coupon: {
-            id: 'promo-casaio10',
-            code: 'CASAIO10',
-            description: '10% off your entire order',
-            discountType: 'percentage',
-            discountValue: 10,
-            minOrderValue: 0,
-            validFrom: '2026-01-01T00:00:00Z',
-            validUntil: '2026-12-31T23:59:59Z',
-            usageLimit: 10000,
-            usageCount: 12,
-            perUserLimit: 1,
-            isActive: true,
-            createdAt: '2026-01-01T00:00:00Z',
-          },
-        };
-      }
-      if (cleanCode === 'WELCOME500') {
-        if (subtotal < 2999) {
-          return {
-            isValid: false,
-            discountAmount: 0,
-            message: 'Coupon WELCOME500 requires a minimum order value of ₹2,999.',
-          };
-        }
-        return {
-          isValid: true,
-          discountAmount: 500,
-          message: '₹500 welcome discount applied!',
-          coupon: {
-            id: 'promo-welcome500',
-            code: 'WELCOME500',
-            description: '₹500 off orders above ₹2,999',
-            discountType: 'flat',
-            discountValue: 500,
-            minOrderValue: 2999,
-            validFrom: '2026-01-01T00:00:00Z',
-            validUntil: '2026-12-31T23:59:59Z',
-            usageLimit: 5000,
-            usageCount: 45,
-            perUserLimit: 1,
-            isActive: true,
-            createdAt: '2026-01-01T00:00:00Z',
-          },
-        };
-      }
-
+    if (matches.length === 0) {
       return { isValid: false, discountAmount: 0, message: 'Invalid or expired coupon code.' };
     }
+    if (matches.length > 1) {
+      return { isValid: false, discountAmount: 0, message: 'This coupon code is ambiguous. Please contact support.' };
+    }
 
-    const coupon = docToData<Coupon>(snap.docs[0]);
+    const coupon = docToData<Coupon>(matches[0]);
+    const now = Date.now();
+    const validFrom = Date.parse(coupon.validFrom);
+    const validUntil = Date.parse(coupon.validUntil);
+    if (coupon.isActive !== true || !Number.isFinite(validFrom) || !Number.isFinite(validUntil) ||
+        now < validFrom || now > validUntil || !Number.isSafeInteger(coupon.usageLimit) ||
+        coupon.usageLimit < 0 || !Number.isSafeInteger(coupon.usageCount) || coupon.usageCount < 0 ||
+        coupon.usageCount >= coupon.usageLimit || !Number.isFinite(coupon.discountValue) || coupon.discountValue <= 0 ||
+        (coupon.discountType !== 'percentage' && coupon.discountType !== 'flat') ||
+        typeof coupon.minOrderValue !== 'number' || !Number.isFinite(coupon.minOrderValue) || coupon.minOrderValue < 0 ||
+        !Number.isSafeInteger(coupon.perUserLimit) || coupon.perUserLimit < 1) {
+      return { isValid: false, discountAmount: 0, message: 'Invalid or expired coupon code.' };
+    }
     if (coupon.minOrderValue && subtotal < coupon.minOrderValue) {
       return {
         isValid: false,
         discountAmount: 0,
         message: `Minimum order value of ₹${coupon.minOrderValue.toLocaleString('en-IN')} required for this coupon.`,
       };
+    }
+
+    if (typeof coupon.minOrderValue !== 'number' || !Number.isFinite(coupon.minOrderValue) || coupon.minOrderValue < 0 ||
+        (coupon.discountType === 'percentage' && coupon.discountValue > 100) ||
+        (coupon.maxDiscountAmount !== undefined && (!Number.isFinite(coupon.maxDiscountAmount) || coupon.maxDiscountAmount <= 0))) {
+      return { isValid: false, discountAmount: 0, message: 'Invalid or expired coupon code.' };
     }
 
     let discountAmount = 0;
@@ -555,32 +520,26 @@ export async function deleteCategory(categoryId: string): Promise<void> {
 }
 
 export async function saveCoupon(
-  data: Partial<Coupon>,
-  couponId?: string
+  data: Partial<Coupon>
 ): Promise<string> {
-  const colRef = collection(db, 'coupons');
-  const now = new Date().toISOString();
-  if (couponId) {
-    const docRef = doc(db, 'coupons', couponId);
-    await updateDoc(docRef, {
-      ...data,
-      updatedAt: now,
-    });
-    return couponId;
-  } else {
-    const docRef = await addDoc(colRef, {
-      ...data,
-      code: (data.code || '').trim().toUpperCase(),
-      usageCount: 0,
-      isActive: data.isActive ?? true,
-      createdAt: now,
-    });
-    return docRef.id;
-  }
+  const response = await fetch('/api/admin/coupons', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  const result = await response.json() as { couponId?: string; error?: string };
+  if (!response.ok || !result.couponId) throw new Error(result.error || 'Failed to create coupon');
+  return result.couponId;
 }
 
-export async function deleteCoupon(couponId: string): Promise<void> {
-  await deleteDoc(doc(db, 'coupons', couponId));
+export async function setCouponActive(couponId: string, isActive: boolean): Promise<void> {
+  const response = await fetch('/api/admin/coupons', {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: couponId, isActive }),
+  });
+  const result = await response.json() as { error?: string };
+  if (!response.ok) throw new Error(result.error || 'Failed to update coupon');
 }
 
 // ─── Reviews & Ratings ────────────────────────────────────────────────────────

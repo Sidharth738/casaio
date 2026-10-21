@@ -327,7 +327,7 @@ export default function OrderDetailPage() {
 
           <div className="space-y-2 text-xs">
             <div className="flex justify-between text-zinc-600">
-              <span>Items Subtotal</span>
+              <span>Items Subtotal (GST-inclusive)</span>
               <span className="font-mono font-medium text-zinc-900">
                 {formatCurrency(order.pricing.subtotal)}
               </span>
@@ -347,12 +347,12 @@ export default function OrderDetailPage() {
               </span>
             </div>
 
-            <div className="flex justify-between text-zinc-400 text-[11px]">
-              <span>Estimated GST (18% inclusive)</span>
-              <span className="font-mono">
-                {formatCurrency(order.pricing.taxAmount)}
-              </span>
-            </div>
+            {typeof order.pricing.taxRate === 'number' && typeof order.pricing.taxAmount === 'number' && (
+              <div className="flex justify-between text-zinc-400 text-[11px]">
+                <span>Includes GST ({Math.round(order.pricing.taxRate * 100)}%)</span>
+                <span className="font-mono">{formatCurrency(order.pricing.taxAmount)}</span>
+              </div>
+            )}
 
             <div className="pt-3 border-t border-zinc-200 flex justify-between items-baseline font-bold text-zinc-950">
               <span className="font-serif text-base">Grand Total</span>

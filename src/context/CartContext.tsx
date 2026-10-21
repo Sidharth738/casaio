@@ -5,6 +5,8 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
 import type { CartItem } from '@/types';
+import { getInclusiveGstBreakdown } from '@/lib/orders/checkout-validation';
+import { calculateItemsSubtotal } from '@/lib/orders/money';
 
 interface CartContextType {
   items: CartItem[];
@@ -232,7 +234,13 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   const subtotal = useMemo(
-    () => items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0),
+    () => {
+      try {
+        return calculateItemsSubtotal(items);
+      } catch {
+        return 0;
+      }
+    },
     [items]
   );
 
@@ -240,7 +248,7 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const shipping = 0;
 
   // Taxes are inclusive in retail dropship pricing in India (GST)
-  const tax = useMemo(() => Math.round(subtotal * 0.18), [subtotal]);
+  const tax = useMemo(() => getInclusiveGstBreakdown(subtotal).taxAmount, [subtotal]);
 
   const total = useMemo(() => subtotal + shipping, [subtotal, shipping]);
 

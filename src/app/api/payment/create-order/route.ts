@@ -3,6 +3,9 @@ import Razorpay from 'razorpay';
 import { adminDb } from '@/lib/firebase/admin';
 import { requireServerUser } from '@/lib/firebase/server-auth';
 import { canRetryExistingOrder, configureRazorpayTimeout, getActivePaymentAttemptRef } from '@/lib/payment/attempts';
+import { getRazorpayConfiguration } from '@/lib/payment/razorpay-config';
+import { RazorpayConfigurationError } from '@/lib/payment/razorpay-config-core';
+import { rupeesToPaise } from '@/lib/orders/money';
 
 export async function POST(req: NextRequest) {
   try {
@@ -25,68 +28,69 @@ export async function POST(req: NextRequest) {
     if (!activeAttemptSnap.exists || activeAttemptSnap.data()?.orderId !== orderId) {
       return NextResponse.json({ error: 'This order is not the active payment attempt' }, { status: 409 });
     }
+    const configuration = getRazorpayConfiguration();
     if (orderData.payment?.razorpayOrderId) {
-      const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
-      const keySecret = process.env.RAZORPAY_KEY_SECRET || '';
-      if (!orderData.payment.razorpayOrderId.startsWith('order_sim_')) {
-        if (!keyId || !keySecret || /placeholder|fake|change_me/i.test(keyId + keySecret)) {
-          return NextResponse.json({ error: 'Payment gateway is not configured' }, { status: 503 });
+      const isSimulationOrder = orderData.payment.razorpayOrderId.startsWith('order_sim_');
+      if (configuration.mode === 'simulation') {
+        if (!isSimulationOrder) {
+          return NextResponse.json({ error: 'Payment mode does not match this order' }, { status: 409 });
         }
-        const existingClient = new Razorpay({ key_id: keyId, key_secret: keySecret });
-        configureRazorpayTimeout(existingClient);
-        const [providerOrder, paymentList] = await Promise.all([
-          existingClient.orders.fetch(orderData.payment.razorpayOrderId),
-          existingClient.orders.fetchPayments(orderData.payment.razorpayOrderId),
-        ]);
-        const expectedAmount = Math.round(Number(orderData.pricing.totalAmount) * 100);
-        if (providerOrder.id !== orderData.payment.razorpayOrderId || providerOrder.amount !== expectedAmount ||
-            providerOrder.currency !== 'INR' || providerOrder.status === 'paid' ||
-            paymentList.items.some((payment) => payment.status === 'authorized' || payment.status === 'captured')) {
-          return NextResponse.json({ error: 'Payment status needs to be checked before resuming this order' }, { status: 409 });
-        }
-        if (!canRetryExistingOrder(providerOrder, paymentList.items)) {
-          return NextResponse.json({ error: 'Payment outcome is not confirmed; do not retry yet' }, { status: 409 });
-        }
+        return NextResponse.json({
+          id: orderData.payment.razorpayOrderId,
+          amount: rupeesToPaise(Number(orderData.pricing.totalAmount)),
+          currency: 'INR',
+          pricing: orderData.pricing,
+          isSimulation: true,
+        });
+      }
+      if (isSimulationOrder) {
+        return NextResponse.json({ error: 'Payment mode does not match this order' }, { status: 409 });
+      }
+      const existingClient = new Razorpay({ key_id: configuration.keyId, key_secret: configuration.keySecret });
+      configureRazorpayTimeout(existingClient);
+      const [providerOrder, paymentList] = await Promise.all([
+        existingClient.orders.fetch(orderData.payment.razorpayOrderId),
+        existingClient.orders.fetchPayments(orderData.payment.razorpayOrderId),
+      ]);
+      const expectedAmount = rupeesToPaise(Number(orderData.pricing.totalAmount));
+      if (providerOrder.id !== orderData.payment.razorpayOrderId || providerOrder.amount !== expectedAmount ||
+          providerOrder.currency !== 'INR' || providerOrder.status === 'paid' ||
+          paymentList.items.some((payment) => payment.status === 'authorized' || payment.status === 'captured')) {
+        return NextResponse.json({ error: 'Payment status needs to be checked before resuming this order' }, { status: 409 });
+      }
+      if (!canRetryExistingOrder(providerOrder, paymentList.items)) {
+        return NextResponse.json({ error: 'Payment outcome is not confirmed; do not retry yet' }, { status: 409 });
       }
       return NextResponse.json({
         id: orderData.payment.razorpayOrderId,
-        amount: Math.round(Number(orderData.pricing.totalAmount) * 100),
+        amount: rupeesToPaise(Number(orderData.pricing.totalAmount)),
         currency: 'INR',
-        isSimulation: orderData.payment.razorpayOrderId.startsWith('order_sim_'),
+        pricing: orderData.pricing,
+        keyId: configuration.keyId,
+        isSimulation: false,
       });
     }
     const amount = Number(orderData.pricing?.totalAmount);
     if (!Number.isFinite(amount) || amount <= 0) return NextResponse.json({ error: 'Invalid order amount' }, { status: 400 });
 
-    const key_id =
-      process.env.RAZORPAY_KEY_ID ||
-      process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
-    const key_secret = process.env.RAZORPAY_KEY_SECRET || '';
-    const isPlaceholder = (value: string) => /placeholder|fake|change_me/i.test(value);
-    const hasLiveCredentials = Boolean(key_id && key_secret && !isPlaceholder(key_id) && !isPlaceholder(key_secret));
-
     // Amount in paise (1 INR = 100 paise)
-    const amountInPaise = Math.round(amount * 100);
+    const amountInPaise = rupeesToPaise(amount);
 
-    // If using placeholder credentials, provide a mock Razorpay order for seamless dev experience
-    if (!hasLiveCredentials) {
-      if (process.env.NODE_ENV === 'production') return NextResponse.json({ error: 'Payment gateway is not configured' }, { status: 503 });
+    if (configuration.mode === 'simulation') {
       const mockOrderId = `order_sim_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       await orderRef.update({ 'payment.razorpayOrderId': mockOrderId, updatedAt: new Date().toISOString() });
       return NextResponse.json({
         id: mockOrderId,
         amount: amountInPaise,
         currency: 'INR',
+        pricing: orderData.pricing,
         receipt: `rcpt_${orderId.slice(0, 20)}`,
         status: 'created',
         isSimulation: true,
       });
     }
 
-    const instance = new Razorpay({
-      key_id,
-      key_secret,
-    });
+    const instance = new Razorpay({ key_id: configuration.keyId, key_secret: configuration.keySecret });
     configureRazorpayTimeout(instance);
     const receipt = `rcpt_${orderId.slice(0, 20)}`;
 
@@ -140,13 +144,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Payment setup could not be attached to this order' }, { status: 409 });
     }
 
-    return NextResponse.json(gatewayOrder);
+    return NextResponse.json({ ...gatewayOrder, pricing: orderData.pricing, keyId: configuration.keyId, isSimulation: false });
   } catch (error: unknown) {
-    console.error('Razorpay order creation error:', error);
-    const msg = error instanceof Error ? error.message : 'Failed to initiate payment gateway order';
-    return NextResponse.json(
-      { error: msg },
-      { status: 500 }
-    );
+    if (error instanceof RazorpayConfigurationError) {
+      return NextResponse.json({ error: 'Payment configuration is invalid' }, { status: 503 });
+    }
+    console.error('Razorpay order creation failed');
+    return NextResponse.json({ error: 'Failed to initiate payment gateway order' }, { status: 500 });
   }
 }

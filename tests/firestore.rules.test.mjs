@@ -276,6 +276,26 @@ test('a customer cannot create an order directly in Firestore', async () => {
   }));
 });
 
+test('clients, including admins, cannot create or alter coupon definitions or code reservations', async () => {
+  const customerDb = asUser(customerId);
+  const adminDb = asUser(adminId, false);
+  const couponRef = doc(adminDb, 'coupons', 'client-coupon');
+  const coupon = {
+    code: 'CLIENT10', description: 'Client forged', discountType: 'percentage', discountValue: 10,
+    minOrderValue: 0, validFrom: '2026-10-01T00:00:00.000Z', validUntil: '2026-12-31T00:00:00.000Z',
+    usageLimit: 100, usageCount: 0, perUserLimit: 1, isActive: true,
+  };
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'coupons', 'existing-coupon'), coupon);
+  });
+  await assertFails(setDoc(doc(customerDb, 'coupons', 'client-coupon'), coupon));
+  await assertFails(setDoc(couponRef, coupon));
+  const existingRef = doc(adminDb, 'coupons', 'existing-coupon');
+  await assertFails(updateDoc(existingRef, { usageCount: 0, discountValue: 99 }));
+  await assertFails(deleteDoc(existingRef));
+  await assertFails(setDoc(doc(adminDb, 'couponCodes', 'reserved-code'), { couponId: 'client-coupon' }));
+});
+
 test('the order customer can read their order and matching order-history query', async () => {
   const db = asUser(customerId);
   const snapshot = await assertSucceeds(getDoc(doc(db, 'orders', 'order-one')));

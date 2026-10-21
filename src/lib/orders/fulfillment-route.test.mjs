@@ -1,6 +1,7 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { getCouponUserUsageKey } from '@/lib/coupons/user-usage';
 import { POST } from '@/app/api/seller/orders/[orderId]/fulfillment/route';
 
 // Helper to construct a mock NextRequest
@@ -324,4 +325,52 @@ test('route handler: successfully updates fulfillment for authorized seller on c
   assert.equal(updatedData.items[0].trackingDetails.trackingNumber, 'TRK-ALPHA-123');
 
   mock.reset();
+});
+
+test('route handler: COD delivery consumes its existing coupon slot exactly once', async () => {
+  const customerId = 'customer-cod-coupon';
+  const sellerId = 'seller-cod-coupon';
+  const orderId = 'order-cod-coupon';
+  const couponId = 'coupon-stable-id';
+  const usagePath = `couponUserUsage/${getCouponUserUsageKey(couponId, customerId)}`;
+  const reservationPath = `${usagePath}/reservations/${orderId}`;
+  const records = new Map([
+    [`users/${sellerId}`, { role: 'seller', status: 'active' }],
+    [`sellers/${sellerId}`, { status: 'approved' }],
+    [`orders/${orderId}`, {
+      customerId,
+      couponApplied: { couponId, code: 'SAVE10', discountAmount: 100 },
+      payment: { method: 'cod', status: 'pending' },
+      orderStatus: 'out_for_delivery',
+      statusTimeline: [],
+      items: [{ productId: 'p1', sellerId, title: 'Item', fulfillmentStatus: 'out_for_delivery' }],
+    }],
+    [usagePath, { state: 'ready', couponId, customerId, occupiedCount: 1 }],
+    [reservationPath, { orderId, couponId, customerId, paymentMethod: 'cod', state: 'awaiting_delivery' }],
+  ]);
+  const ref = (path) => ({
+    id: path.split('/').at(-1), path,
+    get: async () => ({ exists: records.has(path), data: () => structuredClone(records.get(path)) }),
+    collection: (name) => ({ doc: (id) => ref(`${path}/${name}/${id}`) }),
+  });
+  mock.method(adminAuth, 'verifySessionCookie', async () => ({ uid: sellerId, email: 'seller@example.invalid' }));
+  mock.method(adminDb, 'collection', (name) => ({
+    doc: (id) => ref(`${name}/${id}`),
+    add: async () => ({ id: 'notification-local' }),
+  }));
+  mock.method(adminDb, 'runTransaction', async (callback) => callback({
+    get: async (documentRef) => ({ exists: records.has(documentRef.path), data: () => structuredClone(records.get(documentRef.path)) }),
+    update: (documentRef, changes) => records.set(documentRef.path, { ...(records.get(documentRef.path) || {}), ...changes }),
+  }));
+
+  const params = Promise.resolve({ orderId });
+  const response = await POST(createMockRequest({ fulfillmentStatus: 'delivered' }), { params });
+  assert.equal(response.status, 200);
+  assert.equal(records.get(usagePath).occupiedCount, 1);
+  assert.equal(records.get(reservationPath).state, 'consumed');
+  const duplicate = await POST(createMockRequest({ fulfillmentStatus: 'delivered' }), { params });
+  assert.equal(duplicate.status, 200);
+  assert.equal(records.get(usagePath).occupiedCount, 1);
+  assert.equal(records.get(reservationPath).state, 'consumed');
+  mock.restoreAll();
 });

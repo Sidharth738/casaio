@@ -191,13 +191,19 @@ export default function OrderConfirmationPage() {
             {/* Price breakdown */}
             <div className="pt-4 border-t border-zinc-100 space-y-2 text-xs">
               <div className="flex justify-between text-zinc-600">
-                <span>Subtotal</span>
+                <span>Items Subtotal (GST-inclusive)</span>
                 <span className="font-mono">{formatCurrency(order.pricing.subtotal)}</span>
               </div>
               {order.pricing.discountAmount > 0 && (
                 <div className="flex justify-between text-emerald-700">
                   <span>Coupon Discount ({order.couponApplied?.code})</span>
                   <span className="font-mono">-{formatCurrency(order.pricing.discountAmount)}</span>
+                </div>
+              )}
+              {typeof order.pricing.taxRate === 'number' && typeof order.pricing.taxAmount === 'number' && (
+                <div className="flex justify-between text-zinc-600">
+                  <span>Includes GST ({Math.round(order.pricing.taxRate * 100)}%)</span>
+                  <span className="font-mono">{formatCurrency(order.pricing.taxAmount)}</span>
                 </div>
               )}
               <div className="flex justify-between text-zinc-600">

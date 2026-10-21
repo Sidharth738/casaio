@@ -4,13 +4,13 @@ import React, { useEffect, useState } from 'react';
 import {
   Tag,
   Plus,
-  Trash2,
+  Power,
   Check,
   Loader2,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import type { Coupon, DiscountType } from '@/types';
-import { getAllCoupons, saveCoupon, deleteCoupon } from '@/lib/firebase/firestore';
+import { getAllCoupons, saveCoupon, setCouponActive } from '@/lib/firebase/firestore';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
@@ -69,7 +69,7 @@ export default function AdminCouponsPage() {
         maxDiscountAmount: maxDiscountAmount ? Number(maxDiscountAmount) : undefined,
         validFrom: new Date().toISOString(),
         validUntil: new Date(validUntil).toISOString(),
-        usageLimit: Number(usageLimit) || 1000,
+        usageLimit: Number(usageLimit),
         perUserLimit: 1,
         isActive,
       });
@@ -87,13 +87,16 @@ export default function AdminCouponsPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this coupon?')) return;
+  const handleStatusChange = async (coupon: Coupon) => {
+    const nextActive = !coupon.isActive;
+    if (!confirm(nextActive
+      ? 'Activate this coupon? Its code and terms will become permanently immutable.'
+      : 'Deactivate this coupon? Its code will remain reserved and usage will not reset.')) return;
     try {
-      await deleteCoupon(id);
-      setCoupons((prev) => prev.filter((c) => c.id !== id));
+      await setCouponActive(coupon.id, nextActive);
+      setCoupons((prev) => prev.map((item) => item.id === coupon.id ? { ...item, isActive: nextActive } : item));
     } catch {
-      alert('Failed to delete coupon.');
+      alert('Failed to update coupon status.');
     }
   };
 
@@ -106,7 +109,7 @@ export default function AdminCouponsPage() {
             Promotion & Coupon Engine
           </h1>
           <p className="text-xs text-zinc-500 mt-1">
-            Create promotional incentives, discount codes, and order threshold incentives.
+            Coupon terms become immutable on activation. Deactivated codes stay reserved and cannot be reused.
           </p>
         </div>
 
@@ -240,6 +243,11 @@ export default function AdminCouponsPage() {
             </label>
           </div>
 
+          <p className="text-xs text-zinc-500">
+            Discount terms and code cannot be edited after activation. Usage counters are maintained by checkout.
+            A usage limit of 0 disables redemption; it does not mean unlimited uses.
+          </p>
+
           <div className="flex justify-end gap-3 pt-4 border-t border-zinc-100">
             <Button
               type="button"
@@ -340,7 +348,7 @@ export default function AdminCouponsPage() {
 
                     {/* Usage */}
                     <td className="py-4 px-4 font-mono">
-                      {coupon.usageCount || 0} / {coupon.usageLimit || '∞'}
+                      {coupon.usageCount} / {coupon.usageLimit}
                     </td>
 
                     {/* Status */}
@@ -355,11 +363,11 @@ export default function AdminCouponsPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        className="h-8 px-2.5 text-rose-600 hover:bg-rose-50"
-                        onClick={() => handleDelete(coupon.id)}
-                        leftIcon={<Trash2 className="w-3.5 h-3.5" />}
+                        className={`h-8 px-2.5 ${coupon.isActive ? 'text-rose-600 hover:bg-rose-50' : 'text-emerald-700 hover:bg-emerald-50'}`}
+                        onClick={() => handleStatusChange(coupon)}
+                        leftIcon={<Power className="w-3.5 h-3.5" />}
                       >
-                        Delete
+                        {coupon.isActive ? 'Deactivate' : 'Activate'}
                       </Button>
                     </td>
                   </tr>

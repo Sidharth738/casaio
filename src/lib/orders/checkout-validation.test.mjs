@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import {
   validateShippingAddress,
   validatePurchasableProduct,
+  validateFirestoreCoupon,
   calculateAuthoritativePricing,
   calculateStockUpdates,
 } from './checkout-validation.js';
+import { calculateItemsSubtotal, paiseToRupees, rupeesToPaise } from './money.js';
+import { validateCouponDefinition } from '../coupons/definition.mjs';
 
 test('validateShippingAddress: rejects missing address or non-object', () => {
   assert.equal(validateShippingAddress(null).isValid, false);
@@ -176,7 +179,10 @@ test('calculateAuthoritativePricing: calculates correct subtotal, discounts, and
   assert.equal(resNoCoupon.pricing.subtotal, 10000);
   assert.equal(resNoCoupon.pricing.discountAmount, 0);
   assert.equal(resNoCoupon.pricing.shippingFee, 0);
-  assert.equal(resNoCoupon.pricing.taxAmount, 1800); // 18% GST breakdown
+  assert.equal(resNoCoupon.pricing.taxAmount, 1525.42); // 18/118 extracted from the inclusive amount
+  assert.equal(resNoCoupon.pricing.preTaxAmount, 8474.58);
+  assert.equal(resNoCoupon.pricing.payableItemsTotal, 10000);
+  assert.equal(resNoCoupon.pricing.taxRate, 0.18);
   assert.equal(resNoCoupon.pricing.totalAmount, 10000);
 
   // 2. Percentage coupon with minOrderValue
@@ -187,6 +193,8 @@ test('calculateAuthoritativePricing: calculates correct subtotal, discounts, and
     isActive: true,
   });
   assert.equal(resPct.pricing.discountAmount, 1000);
+  assert.equal(resPct.pricing.taxAmount, 1372.88);
+  assert.equal(resPct.pricing.preTaxAmount, 7627.12);
   assert.equal(resPct.pricing.totalAmount, 9000);
   assert.equal(resPct.appliedCoupon?.code, 'CASAIO10');
 
@@ -210,7 +218,137 @@ test('calculateAuthoritativePricing: calculates correct subtotal, discounts, and
     isActive: true,
   });
   assert.equal(resFlatMet.pricing.discountAmount, 500);
+  assert.equal(resFlatMet.pricing.taxAmount, 457.63);
+  assert.equal(resFlatMet.pricing.preTaxAmount, 2542.37);
   assert.equal(resFlatMet.pricing.totalAmount, 3000);
+});
+
+function validCouponDefinition(overrides = {}) {
+  return {
+    code: 'CAP10', description: 'Capped discount', discountType: 'percentage', discountValue: 50,
+    minOrderValue: 0, validFrom: '2026-01-01T00:00:00.000Z', validUntil: '2027-01-01T00:00:00.000Z',
+    usageLimit: 10, usageCount: 0, perUserLimit: 1, isActive: true, ...overrides,
+  };
+}
+
+test('checkout validation rejects zero and negative maximum discounts, accepts missing and positive caps', () => {
+  const now = new Date('2026-10-21T00:00:00.000Z');
+  assert.equal(validateFirestoreCoupon(validCouponDefinition({ maxDiscountAmount: 0 }), now).isValid, false);
+  assert.equal(validateFirestoreCoupon(validCouponDefinition({ maxDiscountAmount: -1 }), now).isValid, false);
+  assert.equal(validateFirestoreCoupon(validCouponDefinition(), now).isValid, true);
+  const positive = validateFirestoreCoupon(validCouponDefinition({ maxDiscountAmount: 250 }), now);
+  assert.equal(positive.isValid, true);
+  assert.equal(positive.couponRule?.maxDiscountAmount, 250);
+});
+
+test('coupon definition and checkout validators agree on maximum-discount validity', () => {
+  const cases = [undefined, 0, -1, 250];
+  for (const maxDiscountAmount of cases) {
+    const raw = validCouponDefinition({ maxDiscountAmount });
+    const definitionResult = validateCouponDefinition(raw);
+    const checkoutResult = validateFirestoreCoupon(raw, new Date('2026-10-21T00:00:00.000Z'));
+    assert.equal(definitionResult.ok, checkoutResult.isValid, `maxDiscountAmount=${maxDiscountAmount}`);
+  }
+});
+
+test('pricing fails closed for invalid maximum discounts and respects valid positive caps', () => {
+  const coupon = {
+    code: 'CAP10', discountType: 'percentage', discountValue: 50, isActive: true,
+    maxDiscountAmount: 125,
+  };
+  const capped = calculateAuthoritativePricing(1000, coupon);
+  assert.equal(capped.pricing.discountAmount, 125);
+  assert.equal(capped.pricing.totalAmount, 875);
+
+  for (const maxDiscountAmount of [0, -1, Number.NaN]) {
+    const invalid = calculateAuthoritativePricing(1000, { ...coupon, maxDiscountAmount });
+    assert.equal(invalid.pricing.discountAmount, 0);
+    assert.equal(invalid.appliedCoupon, undefined);
+  }
+
+  const uncapped = calculateAuthoritativePricing(1000, { ...coupon, maxDiscountAmount: undefined });
+  assert.equal(uncapped.pricing.discountAmount, 500);
+});
+
+test('GST-inclusive pricing extracts 18% from a product price without increasing the payable total', () => {
+  const result = calculateAuthoritativePricing(1180);
+  assert.equal(result.pricing.subtotal, 1180);
+  assert.equal(result.pricing.taxAmount, 180);
+  assert.equal(result.pricing.preTaxAmount, 1000);
+  assert.equal(result.pricing.totalAmount, 1180);
+});
+
+test('multiple product and variant prices use the same GST-inclusive subtotal calculation', () => {
+  const product = validatePurchasableProduct({
+    title: 'Product A', status: 'active', price: 1180, stock: 4,
+  }, { productId: 'product-a', quantity: 1 });
+  const variantProduct = validatePurchasableProduct({
+    title: 'Product B', status: 'active', hasVariants: true,
+    variants: [{ sku: 'B-1180', title: 'Large', price: 1180, stock: 2 }],
+  }, { productId: 'product-b', variantSku: 'B-1180', quantity: 1 });
+
+  assert.equal(product.isValid, true);
+  assert.equal(variantProduct.isValid, true);
+  const subtotal = calculateItemsSubtotal([product.verifiedItem, variantProduct.verifiedItem]);
+  const result = calculateAuthoritativePricing(subtotal);
+  assert.equal(subtotal, 2360);
+  assert.equal(result.pricing.taxAmount, 360);
+  assert.equal(result.pricing.preTaxAmount, 2000);
+  assert.equal(result.pricing.totalAmount, 2360);
+});
+
+test('product prices with sub-paise precision are normalized before order totals are calculated', () => {
+  const result = validatePurchasableProduct({
+    title: 'Rounded Price Product', status: 'active', price: 1.005, stock: 2,
+  }, { productId: 'rounded-price-product', quantity: 2 });
+  assert.equal(result.isValid, true);
+  assert.equal(result.verifiedItem.unitPrice, 1.01);
+  assert.equal(result.verifiedItem.totalPrice, 2.02);
+  assert.equal(calculateAuthoritativePricing(result.verifiedItem.totalPrice).pricing.totalAmount, 2.02);
+});
+
+test('shared customer/server item subtotal rounds each line to paise before aggregation', () => {
+  assert.equal(calculateItemsSubtotal([
+    { unitPrice: 1.005, quantity: 1 },
+    { unitPrice: 1.005, quantity: 1 },
+  ]), 2.02);
+});
+
+test('invalid coupon rules apply no discount and fixed discounts cannot make payable items negative', () => {
+  const invalid = calculateAuthoritativePricing(1180, {
+    code: 'EXPIRED', discountType: 'flat', discountValue: 500,
+    isActive: true, validUntil: '2000-01-01T00:00:00.000Z',
+  });
+  assert.equal(invalid.pricing.discountAmount, 0);
+  assert.equal(invalid.pricing.payableItemsTotal, 1180);
+  assert.equal(invalid.pricing.totalAmount, 1180);
+
+  const malformed = calculateAuthoritativePricing(1180, {
+    code: 'MALFORMED', discountType: 'percentage', discountValue: -10, isActive: true,
+  });
+  assert.equal(malformed.pricing.discountAmount, 0);
+  assert.equal(malformed.pricing.totalAmount, 1180);
+
+  const capped = calculateAuthoritativePricing(100, {
+    code: 'LARGE-FIXED', discountType: 'flat', discountValue: 500, isActive: true,
+  });
+  assert.equal(capped.pricing.discountAmount, 100);
+  assert.equal(capped.pricing.payableItemsTotal, 0);
+  assert.equal(capped.pricing.taxAmount, 0);
+  assert.equal(capped.pricing.totalAmount, 0);
+});
+
+test('currency conversion rounds deterministically to paise', () => {
+  assert.equal(rupeesToPaise(1.005), 101);
+  assert.equal(rupeesToPaise(10.004), 1000);
+  assert.equal(paiseToRupees(101), 1.01);
+});
+
+test('legacy pricing without GST breakdown markers stays distinguishable and unchanged', () => {
+  const legacyOrder = { pricing: { subtotal: 10000, discountAmount: 0, shippingFee: 0, taxAmount: 1800, totalAmount: 10000 } };
+  assert.equal(legacyOrder.pricing.totalAmount, 10000);
+  assert.equal('taxRate' in legacyOrder.pricing, false);
+  assert.equal('preTaxAmount' in legacyOrder.pricing, false);
 });
 
 test('calculateStockUpdates: decrements stock and sales count on base product', () => {

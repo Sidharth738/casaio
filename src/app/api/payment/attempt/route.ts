@@ -9,6 +9,9 @@ import {
   getCaptureReconciliationReason,
   getActivePaymentAttemptRef,
 } from '@/lib/payment/attempts';
+import { getRazorpayConfiguration } from '@/lib/payment/razorpay-config';
+import { rupeesToPaise } from '@/lib/orders/money';
+import { stageOnlineReservationConsumed } from '@/lib/coupons/user-usage';
 
 export const runtime = 'nodejs';
 
@@ -53,6 +56,9 @@ export async function GET(request: NextRequest) {
         if (currentOrderSnap.data()?.payment?.status === 'captured' &&
             currentOrderSnap.data()?.payment?.razorpayPaymentId === order.payment.razorpayPaymentId &&
             currentLockSnap.data()?.orderId === lock.orderId) {
+          await stageOnlineReservationConsumed(
+            transaction, adminDb, currentOrderSnap.data(), orderRef.id, new Date().toISOString()
+          );
           transaction.delete(lockRef);
         }
       });
@@ -70,22 +76,26 @@ export async function GET(request: NextRequest) {
     }
 
     const razorpayOrderId = order.payment?.razorpayOrderId;
-    const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
-    const keySecret = process.env.RAZORPAY_KEY_SECRET || '';
-    if (!razorpayOrderId || razorpayOrderId.startsWith('order_sim_')) {
+    const configuration = getRazorpayConfiguration();
+    if (!razorpayOrderId) {
       return activeReply('pending', Boolean(razorpayOrderId));
     }
-    if (!keyId || !keySecret || /placeholder|fake|change_me/i.test(keyId + keySecret)) {
+    if (razorpayOrderId.startsWith('order_sim_')) {
+      return configuration.mode === 'simulation'
+        ? activeReply('pending', true)
+        : activeReply('unknown');
+    }
+    if (configuration.mode === 'simulation') {
       return activeReply('unknown');
     }
 
-    const razorpay = new Razorpay({ key_id: keyId, key_secret: keySecret });
+    const razorpay = new Razorpay({ key_id: configuration.keyId, key_secret: configuration.keySecret });
     configureRazorpayTimeout(razorpay);
     const [providerOrder, paymentList] = await Promise.all([
       razorpay.orders.fetch(razorpayOrderId),
       razorpay.orders.fetchPayments(razorpayOrderId),
     ]);
-    const expectedAmount = Math.round(Number(order.pricing?.totalAmount || 0) * 100);
+    const expectedAmount = rupeesToPaise(Number(order.pricing?.totalAmount || 0));
     if (providerOrder.id !== razorpayOrderId || providerOrder.amount !== expectedAmount ||
         providerOrder.currency !== 'INR' || !Array.isArray(paymentList.items)) {
       return activeReply('unknown');
@@ -113,6 +123,7 @@ export async function GET(request: NextRequest) {
             currentOrder.payment?.razorpayOrderId !== razorpayOrderId ||
             currentLockSnap.data()?.orderId !== lock.orderId) return 'conflict';
         if (currentOrder.payment?.status === 'captured') {
+          await stageOnlineReservationConsumed(transaction, adminDb, currentOrder, orderRef.id, now);
           if (currentOrder.payment?.razorpayPaymentId === captured.id) return 'already-captured';
           transaction.update(orderRef, {
             'payment.reconciliationRequired': true,
@@ -128,6 +139,7 @@ export async function GET(request: NextRequest) {
         if (currentOrder.payment?.status !== 'pending' && currentOrder.payment?.status !== 'authorized' && !currentNeedsReconciliation) return 'conflict';
         const reconciliationReason = getCaptureReconciliationReason(currentOrder, captured.id);
         const reconciliationRequired = currentNeedsReconciliation || Boolean(reconciliationReason) || otherAuthorizedIds.length > 0;
+        await stageOnlineReservationConsumed(transaction, adminDb, currentOrder, orderRef.id, now);
         transaction.update(orderRef, {
           'payment.status': 'captured',
           'payment.razorpayPaymentId': captured.id,

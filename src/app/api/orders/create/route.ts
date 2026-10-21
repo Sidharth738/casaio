@@ -11,13 +11,19 @@ import type {
 } from '@/types';
 import { requireServerUser } from '@/lib/firebase/server-auth';
 import { getActivePaymentAttemptRef, getCheckoutCoordinationRef, isCheckoutCoordinationFresh } from '@/lib/payment/attempts';
+import { calculateItemsSubtotal } from '@/lib/orders/money';
+import {
+  getCouponUserUsageKey,
+  getLegacyCouponReservationState,
+  MAX_LEGACY_CUSTOMER_ORDERS_FOR_BOOTSTRAP,
+} from '@/lib/coupons/user-usage';
 import {
   validateShippingAddress,
   validatePurchasableProduct,
   calculateAuthoritativePricing,
   calculateStockUpdates,
   validateFirestoreCoupon,
-  type CouponRule,
+  type FirestoreCouponRule,
 } from '@/lib/orders/checkout-validation';
 
 const CHECKOUT_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
@@ -184,7 +190,6 @@ export async function POST(req: NextRequest) {
     }
 
     // 2. Fetch fresh product details to ensure authentic price, variant integrity & stock availability
-    let subtotal = 0;
     const verifiedOrderItems: OrderItem[] = [];
     const sellerIdsSet = new Set<string>();
     const seenItemKeys = new Set<string>();
@@ -213,48 +218,47 @@ export async function POST(req: NextRequest) {
       }
 
       const verified = validationRes.verifiedItem;
-      subtotal += verified.totalPrice;
       sellerIdsSet.add(verified.sellerId);
       verifiedOrderItems.push(verified);
     }
+    let subtotal: number;
+    try {
+      subtotal = calculateItemsSubtotal(verifiedOrderItems);
+    } catch {
+      return NextResponse.json({ error: 'The order total exceeds the supported currency precision.' }, { status: 400 });
+    }
 
-    // 3. Resolve coupon identity. Firestore coupon values are re-read and
-    // validated inside the order transaction before usage is consumed.
-    let couponRule: CouponRule | null = null;
+    // 3. Resolve the unique normalized Firestore definition. Its authoritative
+    // terms and usage counter are re-read and validated in the order transaction.
     let couponRef: FirebaseFirestore.DocumentReference | null = null;
     if (couponCode !== undefined && couponCode !== null && typeof couponCode !== 'string') {
       return NextResponse.json({ error: 'Invalid coupon code.' }, { status: 400 });
     }
     const cleanCouponCode = typeof couponCode === 'string' ? couponCode.trim().toUpperCase() : '';
     if (cleanCouponCode) {
-      if (cleanCouponCode === 'CASAIO10') {
-        couponRule = {
-          code: 'CASAIO10',
-          discountType: 'percentage',
-          discountValue: 10,
-          isActive: true,
-        };
-      } else if (cleanCouponCode === 'WELCOME500') {
-        couponRule = {
-          code: 'WELCOME500',
-          discountType: 'flat',
-          discountValue: 500,
-          minOrderValue: 2999,
-          isActive: true,
-        };
+      const codeReservationId = createHash('sha256').update(cleanCouponCode).digest('hex');
+      const codeReservation = await adminDb.collection('couponCodes').doc(codeReservationId).get();
+      if (codeReservation.exists) {
+        const reservedCouponId = codeReservation.data()?.couponId;
+        if (typeof reservedCouponId !== 'string' || !reservedCouponId) {
+          return NextResponse.json({ error: 'Coupon code is unavailable.' }, { status: 409 });
+        }
+        couponRef = adminDb.collection('coupons').doc(reservedCouponId);
       } else {
-        const couponSnap = await adminDb
-          .collection('coupons')
-          .where('code', '==', cleanCouponCode)
-          .limit(2)
-          .get();
-        if (couponSnap.empty) {
+        // Compatibility path for existing coupons created before the permanent
+        // code registry. Fail closed if normalized legacy records are ambiguous.
+        const allCoupons = await adminDb.collection('coupons').get();
+        const matchingCoupons = allCoupons.docs.filter((snapshot) => {
+          const storedCode = snapshot.data().code;
+          return typeof storedCode === 'string' && storedCode.trim().toUpperCase() === cleanCouponCode;
+        });
+        if (matchingCoupons.length === 0) {
           return NextResponse.json({ error: 'Invalid or expired coupon code.' }, { status: 400 });
         }
-        if (couponSnap.docs.length > 1) {
+        if (matchingCoupons.length > 1) {
           return NextResponse.json({ error: 'Coupon code is ambiguous. Please contact support.' }, { status: 409 });
         }
-        couponRef = adminDb.collection('coupons').doc(couponSnap.docs[0].id);
+        couponRef = adminDb.collection('coupons').doc(matchingCoupons[0].id);
       }
     }
 
@@ -400,7 +404,7 @@ export async function POST(req: NextRequest) {
         pendingStockUpdates.push({ ref: productRefs[index], payload: stockResult.updatePayload });
       }
 
-      let currentCouponRule = couponRule;
+      let currentCouponRule: FirestoreCouponRule | null = null;
       if (couponRef) {
         if (!couponSnap?.exists) {
           return { failed: true, error: 'Coupon is no longer available.', status: 400 };
@@ -409,11 +413,107 @@ export async function POST(req: NextRequest) {
         if (!couponValidation.isValid || !couponValidation.couponRule) {
           return { failed: true, error: couponValidation.error || 'Coupon is invalid.', status: 400 };
         }
+        if (couponValidation.couponRule.code !== cleanCouponCode) {
+          return { failed: true, error: 'Coupon definition does not match the requested code.', status: 400 };
+        }
         currentCouponRule = couponValidation.couponRule;
       }
 
       const { pricing, appliedCoupon } = calculateAuthoritativePricing(subtotal, currentCouponRule);
       const totalAmount = pricing.totalAmount;
+      let couponUsageRef: FirebaseFirestore.DocumentReference | null = null;
+      let couponReservationRef: FirebaseFirestore.DocumentReference | null = null;
+      let couponUsageState: Record<string, unknown> | null = null;
+      let couponReservationState: Record<string, unknown> | null = null;
+      let legacyReservationWrites: Array<{ ref: FirebaseFirestore.DocumentReference; state: string }> = [];
+      let legacyUsageCount = 0;
+      let legacyOrderCount = 0;
+
+      if (couponRef && currentCouponRule && appliedCoupon) {
+        const usageKey = getCouponUserUsageKey(couponRef.id, customerId);
+        couponUsageRef = adminDb.collection('couponUserUsage').doc(usageKey);
+        couponReservationRef = couponUsageRef.collection('reservations').doc(orderDocRef.id);
+        const [usageSnap, reservationSnap] = await Promise.all([
+          transaction.get(couponUsageRef),
+          transaction.get(couponReservationRef),
+        ]);
+        couponUsageState = usageSnap.exists ? usageSnap.data() as Record<string, unknown> : null;
+        couponReservationState = reservationSnap.exists ? reservationSnap.data() as Record<string, unknown> : null;
+
+        if (couponUsageState && (couponUsageState.state !== 'ready' ||
+            couponUsageState.couponId !== couponRef.id || couponUsageState.customerId !== customerId ||
+            !Number.isSafeInteger(couponUsageState.occupiedCount) || (couponUsageState.occupiedCount as number) < 0)) {
+          return { blocked: true, reason: 'coupon-usage-ledger-unavailable' };
+        }
+        if (couponReservationState) {
+          return { blocked: true, reason: 'coupon-order-reservation-already-exists' };
+        }
+
+        if (!couponUsageState) {
+          // A limit+1 query is complete for customer histories at or below the
+          // bound and proves overflow without an unbounded transactional scan.
+          const legacyOrders = await transaction.get(
+            adminDb.collection('orders')
+              .where('customerId', '==', customerId)
+              .limit(MAX_LEGACY_CUSTOMER_ORDERS_FOR_BOOTSTRAP + 1)
+          );
+          if (legacyOrders.docs.length > MAX_LEGACY_CUSTOMER_ORDERS_FOR_BOOTSTRAP) {
+            transaction.set(couponUsageRef, {
+              state: 'blocked',
+              couponId: couponRef.id,
+              customerId,
+              reason: 'legacy-history-exceeds-bootstrap-bound',
+              updatedAt: now,
+            });
+            return { blocked: true, reason: 'coupon-usage-history-requires-reconciliation' };
+          }
+          legacyOrderCount = legacyOrders.docs.length;
+
+          const legacyStates = legacyOrders.docs.map((legacyOrder) => ({
+            id: legacyOrder.id,
+            state: getLegacyCouponReservationState(
+              legacyOrder.data(), couponRef!.id, currentCouponRule!.code
+            ),
+          }));
+          if (legacyStates.some(({ state }) => state === 'ambiguous')) {
+            transaction.set(couponUsageRef, {
+              state: 'blocked',
+              couponId: couponRef.id,
+              customerId,
+              reason: 'ambiguous-legacy-coupon-history',
+              updatedAt: now,
+            });
+            return { blocked: true, reason: 'coupon-usage-history-requires-reconciliation' };
+          }
+
+          legacyUsageCount = legacyStates.filter(({ state }) => state && state !== 'released').length;
+          legacyReservationWrites = legacyStates
+            .filter(({ state }) => state && state !== 'released')
+            .map(({ id, state }) => ({
+              ref: couponUsageRef!.collection('reservations').doc(id),
+              state: state!,
+            }));
+        } else {
+          legacyUsageCount = couponUsageState.occupiedCount as number;
+        }
+
+        if (legacyUsageCount >= currentCouponRule.perUserLimit) {
+          if (!couponUsageState) {
+            transaction.set(couponUsageRef, {
+              state: 'ready', couponId: couponRef.id, customerId,
+              occupiedCount: legacyUsageCount, legacyOrderCount,
+              initializedAt: now, updatedAt: now,
+            });
+            for (const legacy of legacyReservationWrites) {
+              transaction.set(legacy.ref, {
+                orderId: legacy.ref.id, couponId: couponRef.id, customerId,
+                state: legacy.state, source: 'legacy-bootstrap', createdAt: now, updatedAt: now,
+              });
+            }
+          }
+          return { failed: true, error: 'This coupon has reached its per-customer usage limit.', status: 409 };
+        }
+      }
       const orderRecord: Omit<Order, 'id'> = {
         orderNumber,
         customerId,
@@ -426,7 +526,28 @@ export async function POST(req: NextRequest) {
         items: verifiedOrderItems,
         sellerIds: Array.from(sellerIdsSet),
         pricing,
-        ...(appliedCoupon ? { couponApplied: appliedCoupon } : {}),
+        ...(appliedCoupon && couponRef && currentCouponRule ? {
+          couponApplied: {
+            couponId: couponRef.id,
+            code: currentCouponRule.code,
+            termsSnapshot: {
+              version: 1 as const,
+              discountType: currentCouponRule.discountType,
+              discountValue: currentCouponRule.discountValue,
+              minOrderValue: currentCouponRule.minOrderValue,
+              ...(currentCouponRule.maxDiscountAmount !== undefined
+                ? { maxDiscountAmount: currentCouponRule.maxDiscountAmount }
+                : {}),
+              validFrom: currentCouponRule.validFrom,
+              validUntil: currentCouponRule.validUntil,
+              usageLimit: currentCouponRule.usageLimit,
+              perUserLimit: currentCouponRule.perUserLimit,
+            },
+            discountAmount: appliedCoupon.discountValue,
+            // Keep the former applied-discount field for readers of the old order shape.
+            discountValue: appliedCoupon.discountValue,
+          },
+        } : {}),
         payment,
         orderStatus,
         statusTimeline: initialTimeline,
@@ -465,6 +586,39 @@ export async function POST(req: NextRequest) {
           usageCount: (currentCouponRule?.usageCount ?? 0) + 1,
           updatedAt: now,
         });
+        const usageKey = getCouponUserUsageKey(couponRef.id, customerId);
+        const usageRef = couponUsageRef || adminDb.collection('couponUserUsage').doc(usageKey);
+        const usagePayload = {
+          state: 'ready',
+          couponId: couponRef.id,
+          customerId,
+          occupiedCount: legacyUsageCount + 1,
+          legacyOrderCount: couponUsageState ? couponUsageState.legacyOrderCount ?? 0 : legacyOrderCount,
+          updatedAt: now,
+        };
+        if (couponUsageState) transaction.update(usageRef, usagePayload);
+        else transaction.set(usageRef, { ...usagePayload, initializedAt: now });
+        const reservationRef = couponReservationRef || usageRef.collection('reservations').doc(orderDocRef.id);
+        transaction.set(reservationRef, {
+          orderId: orderDocRef.id,
+          couponId: couponRef.id,
+          customerId,
+          paymentMethod: isCod ? 'cod' : 'razorpay',
+          state: isCod ? 'awaiting_delivery' : 'reserved',
+          createdAt: now,
+          updatedAt: now,
+        });
+        for (const legacy of legacyReservationWrites) {
+          transaction.set(legacy.ref, {
+            orderId: legacy.ref.id,
+            couponId: couponRef.id,
+            customerId,
+            state: legacy.state,
+            source: 'legacy-bootstrap',
+            createdAt: now,
+            updatedAt: now,
+          });
+        }
       }
 
       for (const update of pendingStockUpdates) {
@@ -481,7 +635,14 @@ export async function POST(req: NextRequest) {
         { status: transactionResult.status || 400 }
       );
     }
-    if ('blocked' in transactionResult && transactionResult.blocked) {
+      if ('blocked' in transactionResult && transactionResult.blocked) {
+        if (transactionResult.reason === 'coupon-usage-history-requires-reconciliation') {
+          return NextResponse.json({ error: 'Coupon usage history requires reconciliation before this coupon can be used.' }, { status: 503 });
+        }
+        if (transactionResult.reason === 'coupon-usage-ledger-unavailable' ||
+            transactionResult.reason === 'coupon-order-reservation-already-exists') {
+          return NextResponse.json({ error: 'Coupon usage could not be verified. Please retry or contact support.' }, { status: 503 });
+        }
       return NextResponse.json({
         error: transactionResult.paymentMethod === 'cod'
           ? 'This checkout was already submitted with Cash on Delivery. Review that order before trying another payment method.'

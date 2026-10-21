@@ -42,12 +42,50 @@ export interface OrderItem {
 }
 
 export interface OrderPricing {
+  /** Tax-inclusive item subtotal before discounts, in INR. */
   subtotal: number;
   discountAmount: number;
   shippingFee: number;
+  /** GST component already included in payableItemsTotal; never add it again. */
   taxAmount: number;
   totalAmount: number;
+  /** Discounted tax-inclusive item amount for newly calculated orders. */
+  payableItemsTotal?: number;
+  /** GST fraction (0.18 means 18%); absent on historical orders. */
+  taxRate?: number;
+  /** Item amount before the included GST component; absent on historical orders. */
+  preTaxAmount?: number;
 }
+
+export interface CouponTermsSnapshotV1 {
+  version: 1;
+  discountType: 'percentage' | 'flat';
+  discountValue: number;
+  minOrderValue: number;
+  maxDiscountAmount?: number;
+  validFrom: string;
+  validUntil: string;
+  usageLimit: number;
+  perUserLimit: number;
+}
+
+/** Legacy records retain code/discountValue; new records include the versioned server snapshot. */
+export type OrderCouponApplied =
+  | {
+      code: string;
+      discountValue: number;
+      couponId?: string;
+      discountAmount?: number;
+      termsSnapshot?: undefined;
+    }
+  | {
+      couponId: string;
+      code: string;
+      termsSnapshot: CouponTermsSnapshotV1;
+      discountAmount: number;
+      /** Compatibility alias for legacy consumers; this is the applied amount. */
+      discountValue?: number;
+    };
 
 export interface OrderPayment {
   method: PaymentMethod;
@@ -89,10 +127,7 @@ export interface Order {
   items: OrderItem[];
   sellerIds: string[];
   pricing: OrderPricing;
-  couponApplied?: {
-    code: string;
-    discountValue: number;
-  };
+  couponApplied?: OrderCouponApplied;
   payment: OrderPayment;
   orderStatus: OrderStatus;
   cancellationReason?: string;

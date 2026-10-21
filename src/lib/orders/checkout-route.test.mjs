@@ -1,5 +1,6 @@
 import test, { mock, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import { POST } from '@/app/api/orders/create/route';
 
@@ -32,10 +33,10 @@ const validCustomerDetails = {
   phone: '+91 9876543210',
 };
 
-function setupCouponCheckout(coupon, { productStock = 10, transactionProductStock = productStock } = {}) {
-  mock.method(adminAuth, 'verifySessionCookie', async () => ({ uid: 'user-101', email: 'aarav@example.com' }));
+function setupCouponCheckout(coupon, { productStock = 10, transactionProductStock = productStock, customerId = 'user-101', legacyOrders = [] } = {}) {
+  mock.method(adminAuth, 'verifySessionCookie', async () => ({ uid: customerId, email: 'aarav@example.com' }));
   const documents = new Map([
-    ['users/user-101', { role: 'customer', status: 'active' }],
+    [`users/${customerId}`, { role: 'customer', status: 'active' }],
     ['products/coupon-test-product', {
       title: 'Coupon Test Product',
       slug: 'coupon-test-product',
@@ -48,6 +49,7 @@ function setupCouponCheckout(coupon, { productStock = 10, transactionProductStoc
       images: [],
     }],
     ...(coupon ? [['coupons/coupon-1', coupon]] : []),
+    ...legacyOrders.map(({ id, data }) => [`orders/${id}`, { customerId, ...data }]),
   ]);
   let orderCounter = 0;
   let transactionQueue = Promise.resolve();
@@ -55,15 +57,29 @@ function setupCouponCheckout(coupon, { productStock = 10, transactionProductStoc
   const makeRef = (collectionName, id) => ({
     id,
     path: `${collectionName}/${id}`,
+    parent: collectionName.includes('/') ? { parent: { path: collectionName.split('/').slice(0, -1).join('/') } } : undefined,
     get: async () => {
       const data = documents.get(`${collectionName}/${id}`);
       return { exists: Boolean(data), data: () => data };
     },
+    collection: (nestedName) => ({ doc: (nestedId) => makeRef(`${collectionName}/${id}/${nestedName}`, nestedId) }),
   });
 
   mock.method(adminDb, 'collection', (collectionName) => ({
     doc: (id) => makeRef(collectionName, id ?? `order-${++orderCounter}`),
+    get: async () => ({
+      docs: [...documents.entries()]
+        .filter(([path]) => path.startsWith(`${collectionName}/`))
+        .map(([path, data]) => ({ id: path.split('/')[1], ref: makeRef(collectionName, path.split('/')[1]), data: () => data })),
+    }),
     where: (field, operator, value) => ({
+      limit: (limit) => ({
+        __transactionQuery: { collectionName, field, operator, value, limit },
+        get: async () => ({ docs: [...documents.entries()]
+          .filter(([path, data]) => path.startsWith(`${collectionName}/`) && data?.[field] === value)
+          .slice(0, limit)
+          .map(([path, data]) => ({ id: path.split('/').at(-1), ref: makeRef(collectionName, path.split('/').at(-1)), data: () => data })) }),
+      }),
       where: () => ({
         limit: () => ({
           get: async () => {
@@ -78,18 +94,6 @@ function setupCouponCheckout(coupon, { productStock = 10, transactionProductStoc
           },
         }),
       }),
-      limit: () => ({
-        get: async () => {
-          const rows = [...documents.entries()]
-            .filter(([path, data]) => path.startsWith(`${collectionName}/`) && data?.[field] === value)
-            .slice(0, 2)
-            .map(([path, data]) => {
-              const id = path.split('/')[1];
-              return { id, ref: makeRef(collectionName, id), data: () => data };
-            });
-          return { empty: rows.length === 0, docs: rows };
-        },
-      }),
       get: async () => ({ docs: [] }),
     }),
     add: async (data) => ({ id: `notification-${Date.now()}`, data }),
@@ -100,6 +104,19 @@ function setupCouponCheckout(coupon, { productStock = 10, transactionProductStoc
       const writes = [];
       const transaction = {
         get: async (ref) => {
+          if (ref.__transactionQuery) {
+            const { collectionName, field, operator, value, limit } = ref.__transactionQuery;
+            const docs = [...documents.entries()]
+              .filter(([path, data]) => path.startsWith(`${collectionName}/`) &&
+                (operator === '==' ? data?.[field] === value : false))
+              .slice(0, limit)
+              .map(([path, data]) => ({
+                id: path.split('/').at(-1),
+                ref: makeRef(collectionName, path.split('/').at(-1)),
+                data: () => data,
+              }));
+            return { docs };
+          }
           const data = documents.get(ref.path);
           if (ref.path === 'products/coupon-test-product' && data) {
             return {
@@ -123,13 +140,14 @@ function setupCouponCheckout(coupon, { productStock = 10, transactionProductStoc
     return run;
   });
 
-  const request = (checkoutRequestId, code = 'SAVE10', quantity = 1) => createMockRequest({
+  const request = (checkoutRequestId, code = 'SAVE10', quantity = 1, extra = {}) => createMockRequest({
     checkoutRequestId,
     customerDetails: validCustomerDetails,
     shippingAddress: validShippingAddress,
     paymentMethod: 'cod',
     couponCode: code,
     items: [{ productId: 'coupon-test-product', quantity }],
+    ...extra,
   });
 
   return { documents, request };
@@ -146,6 +164,7 @@ function validFirestoreCoupon(overrides = {}) {
     validUntil: new Date(now + 60_000).toISOString(),
     usageLimit: 2,
     usageCount: 0,
+    perUserLimit: 1,
     isActive: true,
     ...overrides,
   };
@@ -551,6 +570,9 @@ test('route handler: ignores client-supplied tampered prices and creates COD ord
         sellerId: 'attacker-id', // Tampered sellerId!
       },
     ],
+    totalAmount: 1,
+    taxAmount: 999999,
+    discountAmount: 999999,
   });
 
   const res = await POST(req);
@@ -566,6 +588,10 @@ test('route handler: ignores client-supplied tampered prices and creates COD ord
   assert.equal(committedOrderRecord.items[0].totalPrice, 29000);
   assert.equal(committedOrderRecord.items[0].sellerId, 'seller-carvings');
   assert.equal(committedOrderRecord.pricing.totalAmount, 29000);
+  assert.equal(committedOrderRecord.pricing.subtotal, 29000);
+  assert.equal(committedOrderRecord.pricing.taxAmount, 4423.73);
+  assert.equal(committedOrderRecord.pricing.preTaxAmount, 24576.27);
+  assert.equal(committedOrderRecord.pricing.payableItemsTotal, 29000);
   assert.equal(committedOrderRecord.payment.method, 'cod');
   assert.equal(committedOrderRecord.payment.status, 'pending');
   assert.equal(committedOrderRecord.orderStatus, 'confirmed');
@@ -701,12 +727,46 @@ test('route handler: consumes a valid Firestore coupon once when below its usage
   const coupon = validFirestoreCoupon();
   const { documents, request } = setupCouponCheckout(coupon);
 
-  const res = await POST(request(couponRequestId('valid')));
+  const res = await POST(request(couponRequestId('valid'), 'SAVE10', 1, {
+    couponTerms: {
+      discountType: 'flat', discountValue: 999, minOrderValue: 999999,
+      usageLimit: 999999, perUserLimit: 999999,
+    },
+  }));
   assert.equal(res.status, 200);
   assert.equal(documents.get('coupons/coupon-1').usageCount, 1);
   const order = [...documents.entries()].find(([path]) => path.startsWith('orders/'))?.[1];
-  assert.equal(order?.couponApplied?.code, 'SAVE10');
+  assert.deepEqual(order?.couponApplied, {
+    couponId: 'coupon-1',
+    code: 'SAVE10',
+    termsSnapshot: {
+      version: 1,
+      discountType: 'percentage',
+      discountValue: 10,
+      minOrderValue: 0,
+      validFrom: coupon.validFrom,
+      validUntil: coupon.validUntil,
+      usageLimit: 2,
+      perUserLimit: 1,
+    },
+    discountAmount: 100,
+    discountValue: 100,
+  });
   assert.equal(order?.pricing?.discountAmount, 100);
+});
+
+test('route handler: rejects a registry mapping whose Firestore coupon code differs from the requested code', async () => {
+  const coupon = validFirestoreCoupon();
+  const { documents, request } = setupCouponCheckout(coupon);
+  const codeId = createHash('sha256').update('OTHER10').digest('hex');
+  documents.set(`couponCodes/${codeId}`, { couponId: 'coupon-1' });
+
+  const res = await POST(request(couponRequestId('mismatched-registry'), 'OTHER10'));
+
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /does not match/i);
+  assert.equal(documents.get('coupons/coupon-1').usageCount, 0);
+  assert.equal([...documents.keys()].filter((path) => path.startsWith('orders/')).length, 0);
 });
 
 test('route handler: rejects a Firestore coupon at its usage cap without changing usage', async () => {
@@ -785,4 +845,120 @@ test('route handler: retrying the same checkout request does not consume coupon 
   assert.equal((await retry.json()).orderId, (await first.json()).orderId);
   assert.equal(documents.get('coupons/coupon-1').usageCount, 1);
   assert.equal([...documents.keys()].filter((path) => path.startsWith('orders/')).length, 1);
+});
+
+test('route handler: pending COD order holds a per-user slot until delivery or cancellation', async () => {
+  const coupon = validFirestoreCoupon({ usageLimit: 10, perUserLimit: 1 });
+  const { documents, request } = setupCouponCheckout(coupon);
+
+  const first = await POST(request(couponRequestId('user-slot-cod'), 'SAVE10', 1));
+  assert.equal(first.status, 200);
+  const usageEntry = [...documents.entries()].find(([path]) => path.startsWith('couponUserUsage/'));
+  assert.equal(usageEntry?.[1].occupiedCount, 1);
+  const reservation = [...documents.entries()].find(([path]) => path.includes('/reservations/'))?.[1];
+  assert.equal(reservation?.state, 'awaiting_delivery');
+
+  const second = await POST(request(couponRequestId('user-slot-second'), 'SAVE10', 2));
+  assert.equal(second.status, 409);
+  assert.match((await second.json()).error, /per-customer usage limit/i);
+  assert.equal(documents.get('coupons/coupon-1').usageCount, 1);
+});
+
+test('route handler: online payment starts with one reserved per-user slot', async () => {
+  const coupon = validFirestoreCoupon({ usageLimit: 10, perUserLimit: 1 });
+  const { documents, request } = setupCouponCheckout(coupon);
+  const response = await POST(request(couponRequestId('online-reservation'), 'SAVE10', 1, { paymentMethod: 'razorpay' }));
+  assert.equal(response.status, 200);
+  const usage = [...documents.entries()].find(([path]) => path.startsWith('couponUserUsage/'))?.[1];
+  const reservation = [...documents.entries()].find(([path]) => path.includes('/reservations/'))?.[1];
+  assert.equal(usage?.occupiedCount, 1);
+  assert.equal(reservation?.state, 'reserved');
+});
+
+test('route handler: concurrent same-customer checkouts cannot take the final per-user slot twice', async () => {
+  const coupon = validFirestoreCoupon({ usageLimit: 10, perUserLimit: 1 });
+  const { documents, request } = setupCouponCheckout(coupon);
+  const responses = await Promise.all([
+    POST(request(couponRequestId('per-user-race-a'), 'SAVE10', 1)),
+    POST(request(couponRequestId('per-user-race-b'), 'SAVE10', 2)),
+  ]);
+  assert.deepEqual(responses.map((response) => response.status).sort(), [200, 409]);
+  const usage = [...documents.entries()].find(([path]) => path.startsWith('couponUserUsage/'))?.[1];
+  assert.equal(usage?.occupiedCount, 1);
+  assert.equal(documents.get('coupons/coupon-1').usageCount, 1);
+  assert.equal([...documents.keys()].filter((path) => /^orders\/order-/.test(path)).length, 1);
+});
+
+test('route handler: different authenticated customers receive independent coupon slots', async () => {
+  const coupon = validFirestoreCoupon({ usageLimit: 10, perUserLimit: 1 });
+  const first = setupCouponCheckout(coupon, { customerId: 'customer-one' });
+  const firstResponse = await POST(first.request(couponRequestId('different-customer-one')));
+  assert.equal(firstResponse.status, 200);
+
+  mock.restoreAll();
+  const second = setupCouponCheckout({ ...coupon, usageCount: 1 }, { customerId: 'customer-two' });
+  const secondResponse = await POST(second.request(couponRequestId('different-customer-two')));
+  assert.equal(secondResponse.status, 200);
+  const usagePaths = [...second.documents.keys()].filter((path) => path.startsWith('couponUserUsage/'));
+  assert.equal(usagePaths.length, 2);
+});
+
+test('route handler: legacy captured orders seed a complete per-user baseline', async () => {
+  const coupon = validFirestoreCoupon({ usageLimit: 10, perUserLimit: 1 });
+  const { documents, request } = setupCouponCheckout(coupon, {
+    legacyOrders: [{
+      id: 'legacy-captured-use',
+      data: {
+        couponApplied: { code: 'SAVE10', discountValue: 100 },
+        payment: { method: 'razorpay', status: 'captured' },
+        orderStatus: 'confirmed',
+      },
+    }],
+  });
+
+  const response = await POST(request(couponRequestId('legacy-limit')));
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /per-customer usage limit/i);
+  const usage = [...documents.entries()].find(([path]) => path.startsWith('couponUserUsage/'))?.[1];
+  assert.equal(usage?.state, 'ready');
+  assert.equal(usage?.occupiedCount, 1);
+  const legacyReservation = [...documents.entries()].find(([path]) => path.endsWith('/reservations/legacy-captured-use'))?.[1];
+  assert.equal(legacyReservation?.state, 'consumed');
+  assert.equal([...documents.keys()].filter((path) => /^orders\/order-/.test(path)).length, 0);
+});
+
+test('route handler: oversized legacy history blocks coupon checkout without a partial baseline', async () => {
+  const coupon = validFirestoreCoupon({ usageLimit: 10, perUserLimit: 5 });
+  const legacyOrders = Array.from({ length: 9 }, (_, index) => ({
+    id: `legacy-order-${index}`,
+    data: { couponApplied: { code: 'SAVE10', discountValue: 100 }, payment: { method: 'razorpay', status: 'captured' } },
+  }));
+  const { documents, request } = setupCouponCheckout(coupon, { legacyOrders });
+
+  const response = await POST(request(couponRequestId('oversized-history')));
+  assert.equal(response.status, 503);
+  assert.match((await response.json()).error, /requires reconciliation/i);
+  const usage = [...documents.entries()].find(([path]) => path.startsWith('couponUserUsage/'))?.[1];
+  assert.equal(usage?.state, 'blocked');
+  assert.equal('occupiedCount' in usage, false);
+  assert.equal(documents.get('coupons/coupon-1').usageCount, 0);
+});
+
+test('route handler: hardcoded campaign names are rejected unless Firestore defines them', async () => {
+  for (const code of ['CASAIO10', 'WELCOME500']) {
+    const { request } = setupCouponCheckout(null);
+    const response = await POST(request(couponRequestId(`missing-${code}`), code));
+    assert.equal(response.status, 400);
+    assert.match((await response.json()).error, /invalid or expired/i);
+  }
+});
+
+test('route handler: campaign-like code uses only the Firestore definition and ignores browser discount values', async () => {
+  const coupon = validFirestoreCoupon({ code: 'CASAIO10', discountValue: 3 });
+  const { documents, request } = setupCouponCheckout(coupon);
+  const response = await POST(request(couponRequestId('authoritative-campaign'), 'casaio10', 1, { discountAmount: 900 }));
+  assert.equal(response.status, 200);
+  assert.equal(documents.get('coupons/coupon-1').usageCount, 1);
+  const order = [...documents.entries()].find(([path]) => path.startsWith('orders/'))?.[1];
+  assert.equal(order?.pricing?.discountAmount, 30);
 });

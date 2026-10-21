@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { useCart } from '@/hooks/useCart';
 import { useAuth } from '@/hooks/useAuth';
-import type { UserAddress, CouponValidationResult } from '@/types';
+import type { UserAddress, CouponValidationResult, OrderPricing } from '@/types';
 import {
   getUserAddresses,
   saveUserAddress,
@@ -32,6 +32,7 @@ import { AddressForm } from '@/components/address/AddressForm';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { formatCurrency } from '@/lib/utils';
+import { calculateAuthoritativePricing } from '@/lib/orders/checkout-validation';
 
 interface RazorpayInstance {
   open: () => void;
@@ -115,6 +116,7 @@ export default function CheckoutPage() {
   // Coupon state
   const [couponCode, setCouponCode] = useState('');
   const [couponResult, setCouponResult] = useState<CouponValidationResult | null>(null);
+  const [serverPricing, setServerPricing] = useState<OrderPricing | null>(null);
   const [validatingCoupon, setValidatingCoupon] = useState(false);
 
   // Submission state
@@ -222,9 +224,13 @@ export default function CheckoutPage() {
   }, [user, authLoading]);
 
   // Calculations
-  const discountAmount = couponResult?.isValid ? couponResult.discountAmount : 0;
-  const shippingFee = 0;
-  const grandTotal = Math.max(0, subtotal - discountAmount + shippingFee);
+  const pricingPreview = calculateAuthoritativePricing(
+    subtotal,
+    couponResult?.isValid ? couponResult.coupon : null
+  ).pricing;
+  const displayedPricing = serverPricing || pricingPreview;
+  const discountAmount = displayedPricing.discountAmount;
+  const grandTotal = displayedPricing.totalAmount;
 
   // Coupon handling
   const handleApplyCoupon = async (e: React.FormEvent) => {
@@ -378,6 +384,9 @@ export default function CheckoutPage() {
         await refreshActivePaymentAttempt();
         return;
       }
+      if (rzpOrder.pricing && typeof rzpOrder.pricing.totalAmount === 'number') {
+        setServerPricing(rzpOrder.pricing as OrderPricing);
+      }
 
       // If in dev simulation mode
       if (rzpOrder.isSimulation) {
@@ -402,9 +411,13 @@ export default function CheckoutPage() {
         return;
       }
 
+      if (typeof rzpOrder.keyId !== 'string' || !/^rzp_(test|live)_/.test(rzpOrder.keyId)) {
+        throw new Error('Payment configuration could not be confirmed. Please try again later.');
+      }
+
       // Production Razorpay Checkout Modal
       const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_placeholderKey123',
+        key: rzpOrder.keyId,
         amount: rzpOrder.amount,
         currency: rzpOrder.currency || 'INR',
         name: 'Casaio Platform',
@@ -928,7 +941,7 @@ export default function CheckoutPage() {
                   ) : (
                     <form onSubmit={handleApplyCoupon} className="flex gap-2">
                       <Input
-                        placeholder="Coupon (e.g. CASAIO10)"
+                        placeholder="Enter coupon code"
                         value={couponCode}
                         onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                         className="text-xs uppercase h-9"
@@ -949,9 +962,9 @@ export default function CheckoutPage() {
                 {/* Pricing Line Items */}
                 <div className="pt-4 border-t border-zinc-100 space-y-2.5 text-xs">
                   <div className="flex justify-between text-zinc-600">
-                    <span>Subtotal</span>
+                    <span>Items subtotal (GST-inclusive)</span>
                     <span className="font-mono font-medium text-zinc-900">
-                      {formatCurrency(subtotal)}
+                      {formatCurrency(displayedPricing.subtotal)}
                     </span>
                   </div>
 
@@ -970,9 +983,9 @@ export default function CheckoutPage() {
                   </div>
 
                   <div className="flex justify-between text-zinc-400 text-[11px]">
-                    <span>Estimated GST (18% inclusive)</span>
+                    <span>Includes GST (18%)</span>
                     <span className="font-mono">
-                      {formatCurrency(Math.round((subtotal - discountAmount) * 0.18))}
+                      {formatCurrency(displayedPricing.taxAmount)}
                     </span>
                   </div>
 
