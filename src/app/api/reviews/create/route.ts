@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import type { Review } from '@/types';
 import { requireServerUser } from '@/lib/firebase/server-auth';
+import { calculatePublishedRatings } from '@/lib/reviews/aggregate';
 
 export async function POST(req: NextRequest) {
   try {
@@ -51,11 +52,6 @@ export async function POST(req: NextRequest) {
 
     // 3. Verify product exists
     const productRef = adminDb.collection('products').doc(productId);
-    const productSnap = await productRef.get();
-    if (!productSnap.exists) {
-      return NextResponse.json({ error: 'Product not found' }, { status: 404 });
-    }
-
     // 4. Check for Verified Purchase
     let isVerifiedPurchase = false;
     let verifiedOrderId: string | undefined = undefined;
@@ -98,28 +94,33 @@ export async function POST(req: NextRequest) {
       createdAt: now,
     };
 
-    const reviewRef = await adminDb.collection('reviews').add(reviewData);
+    const reviewsCollection = adminDb.collection('reviews');
+    const reviewRef = reviewsCollection.doc();
+    const result = await adminDb.runTransaction(async (transaction) => {
+      const productSnap = await transaction.get(productRef);
+      if (!productSnap.exists) return 'product_missing' as const;
 
-    // 6. Recalculate Product's rating and review count
-    try {
-      const reviewsSnap = await adminDb
-        .collection('reviews')
-        .where('productId', '==', productId)
-        .where('status', '==', 'published')
-        .get();
+      const existingReviews = await transaction.get(
+        reviewsCollection.where('productId', '==', productId)
+      );
+      if (existingReviews.docs.some((doc) => doc.data().userId === userId)) {
+        return 'duplicate' as const;
+      }
 
-      const allReviews = reviewsSnap.docs.map((d) => d.data() as Review);
-      const totalCount = allReviews.length;
-      const sumRating = allReviews.reduce((sum, r) => sum + (Number(r.rating) || 5), 0);
-      const avgRating = totalCount > 0 ? Math.round((sumRating / totalCount) * 10) / 10 : 5;
-
-      await productRef.update({
-        rating: avgRating,
-        reviewCount: totalCount,
+      const allReviews = [reviewData, ...existingReviews.docs.map((doc) => doc.data() as Review)];
+      transaction.create(reviewRef, reviewData);
+      transaction.update(productRef, {
+        ratings: calculatePublishedRatings(allReviews),
         updatedAt: now,
       });
-    } catch (calcErr) {
-      console.warn('Failed to update product rating metrics:', calcErr);
+      return 'created' as const;
+    });
+
+    if (result === 'product_missing') {
+      return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+    }
+    if (result === 'duplicate') {
+      return NextResponse.json({ error: 'You have already reviewed this product' }, { status: 409 });
     }
 
     return NextResponse.json({

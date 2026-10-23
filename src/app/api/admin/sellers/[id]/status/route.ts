@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminDb, adminAuth } from '@/lib/firebase/admin';
+import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import type { SellerStatus } from '@/types';
 import { requireServerRole } from '@/lib/firebase/server-auth';
+import {
+  logRoleUpdateFailure,
+  syncUserRoleClaim,
+  updateUserRoleWithAudit,
+} from '@/lib/auth/role-update';
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    if (!await requireServerRole(req, ['admin'])) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    const actor = await requireServerRole(req, ['admin']);
+    if (!actor) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+
     const { id } = await params;
     const body = await req.json();
     const { status, statusReason } = body as {
@@ -17,85 +24,71 @@ export async function POST(
     };
 
     if (!status || !['pending', 'approved', 'rejected', 'suspended'].includes(status)) {
-      return NextResponse.json(
-        { error: 'Valid seller status is required' },
-        { status: 400 }
-      );
-    }
-
-    const sellerRef = adminDb.collection('sellers').doc(id);
-    const snap = await sellerRef.get();
-
-    if (!snap.exists) {
-      return NextResponse.json({ error: 'Seller application not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Valid seller status is required' }, { status: 400 });
     }
 
     const now = new Date().toISOString();
-
-    // Application-submitted values are not trusted financial or metric data.
-    // Reset those values whenever a non-approved application is approved.
-    const sellerUpdates: Record<string, unknown> = {
-      status,
-      statusReason: statusReason || null,
+    const sellerRef = adminDb.collection('sellers').doc(id);
+    const nextRole = status === 'approved' ? 'seller' : 'customer';
+    const result = await updateUserRoleWithAudit({
+      actorUid: actor.uid,
+      targetUid: id,
+      newRole: nextRole,
       updatedAt: now,
+      relatedUpdates: [{
+        ref: sellerRef,
+        buildUpdates: (sellerData) => ({
+          status,
+          statusReason: statusReason || null,
+          updatedAt: now,
+          ...(status === 'approved' && sellerData.status !== 'approved' ? {
+            commissionRatePercent: 10,
+            metrics: {
+              totalSalesAmount: 0,
+              totalOrdersCount: 0,
+              ratingAverage: 5,
+              ratingCount: 0,
+            },
+          } : {}),
+        }),
+      }],
+    });
+    if (!result.found) {
+      return NextResponse.json({ error: 'Seller application or user profile not found' }, { status: 404 });
+    }
+
+    let authSyncFailed = false;
+    const recordAuthSyncFailure = (operation: string, error: unknown) => {
+      authSyncFailed = true;
+      logRoleUpdateFailure(operation, error);
     };
-    if (status === 'approved' && snap.data()?.status !== 'approved') {
-      sellerUpdates.commissionRatePercent = 10;
-      sellerUpdates.metrics = {
-        totalSalesAmount: 0,
-        totalOrdersCount: 0,
-        ratingAverage: 5,
-        ratingCount: 0,
-      };
-    }
-    await sellerRef.update(sellerUpdates);
 
-    // 2. If approved, promote user role in both Firestore and Firebase Auth Custom Claims
-    const userRef = adminDb.collection('users').doc(id);
-    if (status === 'approved') {
-      await userRef.update({
-        role: 'seller',
-        updatedAt: now,
-      });
-
-      try {
-        await adminAuth.setCustomUserClaims(id, { role: 'seller' });
-      } catch (authErr) {
-        console.warn('Failed setting custom claim for seller, continuing with doc role:', authErr);
-      }
-    } else {
-      // Revert role back to customer if rejected, suspended, or moved back to pending
-      await userRef.update({
-        role: 'customer',
-        updatedAt: now,
-      });
-
-      try {
-        await adminAuth.setCustomUserClaims(id, { role: 'customer' });
-        await adminAuth.revokeRefreshTokens(id);
-      } catch (authErr) {
-        console.warn('Failed reverting custom claim or revoking refresh tokens for seller:', authErr);
-      }
-    }
-
-    // Dispatch in-app notification to the seller user
     try {
-      const title =
-        status === 'approved'
-          ? 'Seller Application Approved!'
-          : status === 'rejected'
+      await syncUserRoleClaim(id, nextRole);
+    } catch (error: unknown) {
+      recordAuthSyncFailure('Seller role claim synchronization failed', error);
+    }
+    if (status !== 'approved') {
+      try {
+        await adminAuth.revokeRefreshTokens(id);
+      } catch (error: unknown) {
+        recordAuthSyncFailure('Seller refresh-token revocation failed', error);
+      }
+    }
+
+    try {
+      const title = status === 'approved'
+        ? 'Seller Application Approved!'
+        : status === 'rejected'
           ? 'Seller Application Not Approved'
           : status === 'suspended'
-          ? 'Seller Account Suspended'
-          : 'Seller Application Status Updated';
-
-      const message =
-        status === 'approved'
-          ? 'Congratulations! Your workshop has been approved. You now have access to your Seller Portal.'
-          : status === 'rejected'
+            ? 'Seller Account Suspended'
+            : 'Seller Application Status Updated';
+      const message = status === 'approved'
+        ? 'Congratulations! Your workshop has been approved. You now have access to your Seller Portal.'
+        : status === 'rejected'
           ? `Your seller application could not be approved at this time.${statusReason ? ` Reason: ${statusReason}` : ''}`
           : `Your seller account status has been updated to "${status}".`;
-
       const link = status === 'approved' ? '/seller/dashboard' : '/account/profile';
 
       await adminDb.collection('notifications').add({
@@ -107,8 +100,15 @@ export async function POST(
         read: false,
         createdAt: now,
       });
-    } catch (notifErr) {
-      console.warn('Failed dispatching seller status notification:', notifErr);
+    } catch (error: unknown) {
+      logRoleUpdateFailure('Seller status notification dispatch failed', error);
+    }
+
+    if (authSyncFailed) {
+      return NextResponse.json(
+        { error: 'Seller status was updated; authentication settings require retry' },
+        { status: 503 }
+      );
     }
 
     return NextResponse.json({
@@ -117,8 +117,7 @@ export async function POST(
       status,
     });
   } catch (error: unknown) {
-    console.error('Admin seller status update error:', error);
-    const msg = error instanceof Error ? error.message : 'Failed to update seller status';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    logRoleUpdateFailure('Admin seller status update failed', error);
+    return NextResponse.json({ error: 'Unable to update seller status' }, { status: 500 });
   }
 }

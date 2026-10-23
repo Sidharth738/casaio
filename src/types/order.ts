@@ -20,6 +20,32 @@ export type FulfillmentStatus =
 export type PaymentMethod = 'razorpay' | 'cod';
 export type PaymentStatus = 'pending' | 'authorized' | 'captured' | 'failed' | 'refund_pending' | 'refund_failed' | 'refunded';
 
+export type RefundAttemptState =
+  | 'not_submitted'
+  | 'submission_unknown'
+  | 'provider_identified'
+  | 'succeeded'
+  | 'failed';
+
+export type RefundProviderStatus = 'pending' | 'processed' | 'failed';
+
+/** Durable server-side record for a single cancellation refund submission. */
+export interface RefundAttempt {
+  id: string;
+  orderId: string;
+  customerId: string;
+  paymentId: string;
+  amount: number;
+  currency: 'INR';
+  state: RefundAttemptState;
+  createdAt: string;
+  updatedAt: string;
+  submissionStartedAt?: string;
+  providerRefundId?: string;
+  providerStatus?: RefundProviderStatus;
+  providerVerifiedAt?: string;
+}
+
 export interface OrderItem {
   productId: string;
   variantSku?: string;
@@ -95,6 +121,8 @@ export interface OrderPayment {
   razorpayAuthorizedPaymentId?: string;
   razorpaySignature?: string;
   razorpayRefundId?: string;
+  /** Points to the single cancellation refund attempt reserved for this order. */
+  activeRefundAttemptId?: string;
   authorizedAt?: string;
   lastFailureAt?: string;
   lastFailurePaymentId?: string;

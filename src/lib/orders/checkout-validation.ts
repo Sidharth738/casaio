@@ -182,19 +182,25 @@ export function validateShippingAddress(address: unknown): ValidatedShippingAddr
     userId: typeof raw.userId === 'string' ? raw.userId : '',
     fullName,
     phoneNumber,
-    alternatePhone: typeof raw.alternatePhone === 'string' && raw.alternatePhone.trim() ? raw.alternatePhone.trim() : undefined,
+    ...(typeof raw.alternatePhone === 'string' && raw.alternatePhone.trim()
+      ? { alternatePhone: raw.alternatePhone.trim() }
+      : {}),
     addressLine1,
-    addressLine2: typeof raw.addressLine2 === 'string' && raw.addressLine2.trim() ? raw.addressLine2.trim() : undefined,
-    landmark: typeof raw.landmark === 'string' && raw.landmark.trim() ? raw.landmark.trim() : undefined,
+    ...(typeof raw.addressLine2 === 'string' && raw.addressLine2.trim()
+      ? { addressLine2: raw.addressLine2.trim() }
+      : {}),
+    ...(typeof raw.landmark === 'string' && raw.landmark.trim()
+      ? { landmark: raw.landmark.trim() }
+      : {}),
     city,
     state,
     postalCode,
     country,
     addressType: raw.addressType === 'work' || raw.addressType === 'other' ? raw.addressType : 'home',
     isDefault: Boolean(raw.isDefault),
-    coordinates: raw.coordinates && typeof raw.coordinates.lat === 'number' && typeof raw.coordinates.lng === 'number'
-      ? { lat: raw.coordinates.lat, lng: raw.coordinates.lng }
-      : undefined,
+    ...(raw.coordinates && typeof raw.coordinates.lat === 'number' && typeof raw.coordinates.lng === 'number'
+      ? { coordinates: { lat: raw.coordinates.lat, lng: raw.coordinates.lng } }
+      : {}),
     createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString(),
   };
 

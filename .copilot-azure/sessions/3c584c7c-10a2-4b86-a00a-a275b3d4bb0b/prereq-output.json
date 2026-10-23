@@ -1,0 +1,179 @@
+{
+  "components": [
+    {
+      "name": "casaio-project",
+      "path": ".",
+      "stack": {
+        "language": "TypeScript",
+        "framework": "Next.js",
+        "version": "16.4.2"
+      },
+      "readiness": {
+        "status": "ready",
+        "fixes": []
+      },
+      "verdicts": {
+        "build": "PASS",
+        "completeness": "WARN",
+        "deployability": "WARN"
+      },
+      "findings": [
+        {
+          "category": "build",
+          "verdict": "PASS",
+          "summary": "Manifest, lockfile, and Next build/start scripts are present; no undeclared package imports were found in config files and the first 20 source files checked. Build was not executed.",
+          "fix": null
+        },
+        {
+          "category": "completeness",
+          "verdict": "WARN",
+          "summary": "Store, seller, admin, checkout, and payment flows exist, but local Razorpay mode variables are missing, several footer links target absent pages, and live inventory/order subscriptions and supplier automation were not found.",
+          "fix": "Complete payment configuration and the missing business workflows before production launch."
+        },
+        {
+          "category": "deployability",
+          "verdict": "WARN",
+          "summary": "The app has a standard Next.js Node start path, but Firebase is a core cloud dependency and there is no Azure deployment scaffold or health endpoint.",
+          "fix": "Choose the hosting target; migrate Firebase services before continuing an Azure-only deployment workflow."
+        }
+      ]
+    }
+  ],
+  "warnings": [
+    {
+      "id": "W-PAYMENT-MODE",
+      "component": "casaio-project",
+      "axis": "completeness",
+      "summary": "Razorpay mode selectors are absent from the current .env.local configuration.",
+      "detail": "RAZORPAY_MODE, RAZORPAY_KEY_SECRET_MODE, and RAZORPAY_WEBHOOK_SECRET_MODE are not set in .env.local or the current process environment. The application requires explicit compatible modes, so online payment setup/webhook requests will fail configuration validation until these are configured.",
+      "fix": "Set the Razorpay mode variables to match the intended credentials in local/deployment secrets; do not commit secret values.",
+      "fixPhase": "deploy-gate"
+    },
+    {
+      "id": "W-FOOTER-ROUTES",
+      "component": "casaio-project",
+      "axis": "completeness",
+      "summary": "Footer navigation links to pages that are not present in the app route tree.",
+      "detail": "No route files were found for /shipping-policy, /returns-refunds, /faq, /contact, /seller/guidelines, or /seller/dropship-faq. These links will lead users to not-found pages, and the repository does not currently provide these customer/seller policy pages.",
+      "fix": "Create the linked policy/support/seller-guidance pages or remove/replace the links before launch.",
+      "fixPhase": "deploy-gate"
+    },
+    {
+      "id": "W-REALTIME-UPDATES",
+      "component": "casaio-project",
+      "axis": "completeness",
+      "summary": "Live inventory and order status updates are not implemented as realtime subscriptions.",
+      "detail": "No Firestore onSnapshot listeners were found. The product pages use 60-second revalidation, account/order data is fetched through request-based APIs, and checkout polls payment status every 15 seconds; users should not expect immediate live catalog, stock, order, or shipment updates.",
+      "fix": "If live updates are a product requirement, add Firestore subscriptions or an explicit server push/polling strategy for inventory and order milestones.",
+      "fixPhase": "post-deploy"
+    },
+    {
+      "id": "W-SUPPLIER-FULFILLMENT",
+      "component": "casaio-project",
+      "axis": "completeness",
+      "summary": "Dropship fulfillment appears seller-managed rather than integrated with suppliers or carriers.",
+      "detail": "Seller fulfillment endpoints accept manually entered carrier, tracking number/URL, and delivery milestones. No supplier feed/order-forwarding or carrier tracking API integration was found. The current implementation can support manual multi-seller fulfillment, but not automated end-to-end dropshipping.",
+      "fix": "Confirm manual seller fulfillment is intended, or integrate the chosen supplier and carrier systems for catalog/stock sync, order forwarding, and tracking events.",
+      "fixPhase": "post-deploy"
+    },
+    {
+      "id": "W-FIREBASE-EXAMPLE",
+      "component": "casaio-project",
+      "axis": "completeness",
+      "summary": "The sample Firebase project in .env.example differs from the Firebase CLI default.",
+      "detail": ".env.example contains the sample project identifier casaio-app, while .firebaserc selects a different default project. The current .env.local identifiers were checked and match the CLI default, but a fresh setup copied from the example could point the app at a different Firebase project than the one receiving rule deployments.",
+      "fix": "Replace sample project identifiers with explicit placeholders or align the example with the intended Firebase CLI project.",
+      "fixPhase": "deploy-gate"
+    },
+    {
+      "id": "W-NODE-ENGINE",
+      "component": "casaio-project",
+      "axis": "deployability",
+      "summary": "The project does not declare its supported Node.js version.",
+      "detail": "The local runtime is Node.js 22.16.0, but package.json has no engines field. A deployment host should be pinned to a Next-compatible Node.js runtime rather than relying on its default.",
+      "fix": "Declare and configure the supported Node.js version in package.json and the selected hosting platform.",
+      "fixPhase": "deploy-gate"
+    },
+    {
+      "id": "W-HEALTH-ENDPOINT",
+      "component": "casaio-project",
+      "axis": "deployability",
+      "summary": "No dedicated health endpoint was found.",
+      "detail": "No /health or /healthz API route exists in the source tree. This does not prevent local startup, but a deployment health probe would need a suitable route or a configured storefront probe.",
+      "fix": "Add a lightweight health endpoint or configure the hosting platform to probe a route that exists.",
+      "fixPhase": "scaffold"
+    }
+  ],
+  "detectedStack": "Next.js 16.4.2, TypeScript, React 19",
+  "fastTrackEligible": false,
+  "overallHealth": "readyWithCaveats",
+  "buildRequirements": {
+    "hasNativeModules": true,
+    "hasDockerfile": false,
+    "f1Viable": false,
+    "f1BlockReason": "large dependency tree (582,974-byte package lock) and build-time compilation; node-gyp is present under the optional dev-only re2 dependency"
+  },
+  "healthEndpoint": null,
+  "entryPoint": "package.json scripts.start -> next start",
+  "postDeployRecommendations": [
+    {
+      "title": "Configure Razorpay modes and verify test checkout",
+      "reason": "The checked local configuration is missing the explicit payment and webhook mode selectors required by the application.",
+      "effort": "low",
+      "services": ["Razorpay"]
+    },
+    {
+      "title": "Implement or remove missing footer routes",
+      "reason": "Shipping, returns, FAQ, support, and seller-guidance links currently lead to pages absent from the route tree.",
+      "effort": "medium",
+      "services": ["Next.js"]
+    },
+    {
+      "title": "Add realtime catalog and order updates if required",
+      "reason": "Current product freshness is revalidated every 60 seconds and account/order UI has no Firestore realtime listener.",
+      "effort": "medium",
+      "services": ["Firebase Firestore"]
+    },
+    {
+      "title": "Choose and implement the fulfillment operating model",
+      "reason": "Seller-entered tracking and status changes exist, but supplier and carrier API automation was not detected.",
+      "effort": "high",
+      "services": ["Supplier", "Carrier"]
+    },
+    {
+      "title": "Align the sample Firebase project configuration",
+      "reason": "A fresh setup may use a different project than the Firebase CLI default receiving rules.",
+      "effort": "low",
+      "services": ["Firebase"]
+    },
+    {
+      "title": "Declare a supported Node.js version",
+      "reason": "The project has no engines field, so the deployment runtime could differ from the tested local Node.js 22 runtime.",
+      "effort": "low",
+      "services": ["Node.js", "Next.js"]
+    },
+    {
+      "title": "Configure a health probe",
+      "reason": "There is no dedicated health route for deployment probes.",
+      "effort": "low",
+      "services": ["Next.js"]
+    }
+  ],
+  "initCommands": [],
+  "cloudSdkFindings": [
+    {
+      "dependency": "firebase",
+      "version": "^12.19.0",
+      "service": "Client Firebase Authentication, Firestore, and Storage",
+      "azureMapping": "Entra ID / Entra External ID, Cosmos DB, and Azure Blob Storage; Azure Functions where serverless handlers are needed",
+      "impact": "Core cloud dependency. This does not prevent the existing Firebase-backed app from running on a compatible Node host, but it blocks an Azure-only migration path until the services are replaced."
+    },
+    {
+      "dependency": "firebase-admin",
+      "version": "^14.5.0",
+      "service": "Server-side Firebase Admin Authentication, Firestore, and Storage",
+      "azureMapping": "Entra ID / Entra External ID, Cosmos DB, and Azure Blob Storage",
+      "impact": "Server routes directly depend on Firebase Admin services and require a deliberate data/auth migration for Azure-native hosting."
+    }
+  ]
+}

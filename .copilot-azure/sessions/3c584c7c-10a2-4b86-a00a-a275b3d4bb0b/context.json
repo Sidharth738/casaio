@@ -1,0 +1,83 @@
+﻿{
+    "sessionId": "3c584c7c-10a2-4b86-a00a-a275b3d4bb0b",
+    "createdUtc": "2026-10-21T19:35:29.2137926Z",
+    "lastModifiedUtc": "2026-10-21T19:34:39.000Z",
+    "currentPhase": null,
+    "completedPhases": ["prereq"],
+    "statusSummary": "Readiness evaluation completed; Azure requires a Firebase service migration.",
+    "intent": {
+        "userPrompt": "Can you check my project is full completed to run has real time dropshipping e-commercial wbsite",
+        "description": "Assess whether this repository is complete and operationally ready as a real-time dropshipping e-commerce website."
+    },
+    "components": [
+        {
+            "name": "casaio-project",
+            "path": ".",
+            "stack": {
+                "language": "TypeScript",
+                "framework": "Next.js",
+                "version": "16.4.2"
+            },
+            "readiness": {
+                "status": "ready",
+                "fixes": []
+            },
+            "verdicts": {
+                "build": "PASS",
+                "completeness": "WARN",
+                "deployability": "WARN"
+            },
+            "findings": [
+                {
+                    "category": "build",
+                    "verdict": "PASS",
+                    "summary": "Manifest, lockfile, and Next build/start scripts are present; no undeclared package imports were found in config files and the first 20 source files checked. Build was not executed.",
+                    "fix": null
+                },
+                {
+                    "category": "completeness",
+                    "verdict": "WARN",
+                    "summary": "Store, seller, admin, checkout, and payment flows exist, but local Razorpay mode variables are missing, several footer links target absent pages, and live inventory/order subscriptions and supplier automation were not found.",
+                    "fix": "Complete payment configuration and the missing business workflows before production launch."
+                },
+                {
+                    "category": "deployability",
+                    "verdict": "WARN",
+                    "summary": "The app has a standard Next.js Node start path, but Firebase is a core cloud dependency and there is no Azure deployment scaffold or health endpoint.",
+                    "fix": "Choose the hosting target; migrate Firebase services before continuing an Azure-only deployment workflow."
+                }
+            ]
+        }
+    ],
+    "azure": {
+        "subscriptionId": "",
+        "subscriptionName": "",
+        "resourceGroup": "",
+        "region": ""
+    },
+    "repo": {
+        "remote": "https://github.com/Sidharth738/casaio.git",
+        "lastScanCommit": "a9081df81fda467e44842dfa64443d5694f22a18"
+    },
+    "app": {
+        "name": "casaio-project"
+    },
+    "detectedInfra": [],
+    "detectedServices": [
+        {
+            "type": "Firebase Authentication, Firestore, and Storage",
+            "version": "firebase ^12.19.0; firebase-admin ^14.5.0",
+            "source": "code"
+        },
+        {
+            "type": "Razorpay payments",
+            "version": "razorpay ^2.9.8",
+            "source": "code"
+        },
+        {
+            "type": "Google Maps Places",
+            "source": "code"
+        }
+    ],
+    "overrides": []
+}

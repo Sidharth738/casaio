@@ -1,65 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
-import { timingSafeEqual } from 'crypto';
+import { adminAuth } from '@/lib/firebase/admin';
+import { requireServerRole } from '@/lib/firebase/server-auth';
+import {
+  getRoleUpdateErrorCode,
+  logRoleUpdateFailure,
+  syncUserRoleClaim,
+  updateUserRoleWithAudit,
+} from '@/lib/auth/role-update';
+import type { UserRole } from '@/types';
+
+const USER_ROLES: readonly UserRole[] = ['customer', 'seller', 'admin'];
+
+function isUserRole(value: unknown): value is UserRole {
+  return typeof value === 'string' && USER_ROLES.includes(value as UserRole);
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const { targetUid, role } = await request.json();
+    const actor = await requireServerRole(request, ['admin']);
+    if (!actor) return NextResponse.json({ error: 'Admin authorization required' }, { status: 403 });
 
-    if (!targetUid || !role) {
-      return NextResponse.json({ error: 'Missing targetUid or role' }, { status: 400 });
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
 
-    if (!['customer', 'seller', 'admin'].includes(role)) {
-      return NextResponse.json({ error: 'Invalid role specified' }, { status: 400 });
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
     }
 
-    // Authorization check: Either valid bootstrap secret or requester is an admin
-    const authHeader = request.headers.get('Authorization');
-    const bootstrapSecret = request.headers.get('x-admin-bootstrap-secret');
-    const configuredSecret = process.env.ADMIN_BOOTSTRAP_SECRET;
-    const providedSecretBytes = Buffer.from(bootstrapSecret || '');
-    const configuredSecretBytes = Buffer.from(configuredSecret || '');
-    const secretMatches = Boolean(configuredSecret && providedSecretBytes.length > 0 &&
-      providedSecretBytes.length === configuredSecretBytes.length &&
-      timingSafeEqual(providedSecretBytes, configuredSecretBytes));
-
-    let isAuthorizedAdmin = false;
-
-    if (!secretMatches && authHeader?.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
-      const decoded = await adminAuth.verifyIdToken(token);
-      const requester = await adminDb.collection('users').doc(decoded.uid).get();
-      isAuthorizedAdmin = requester.data()?.role === 'admin' && requester.data()?.status !== 'suspended';
+    const { targetUid, role } = body as Record<string, unknown>;
+    const hasUnexpectedFields = Object.keys(body).some((key) => key !== 'targetUid' && key !== 'role');
+    if (hasUnexpectedFields || typeof targetUid !== 'string' || targetUid.length < 1 ||
+        targetUid.length > 128 || targetUid.trim() !== targetUid || targetUid.includes('/') || !isUserRole(role)) {
+      return NextResponse.json({ error: 'Invalid target UID or role' }, { status: 400 });
     }
 
-    if (!secretMatches && !isAuthorizedAdmin) {
-      return NextResponse.json(
-        { error: 'Unauthorized: Admin privileges or bootstrap secret required' },
-        { status: 403 }
-      );
-    }
-
-    // Set Custom Claims on Firebase Authentication
-    const existing = await adminAuth.getUser(targetUid);
-    await adminAuth.setCustomUserClaims(targetUid, { ...existing.customClaims, role });
-
-    // Update user document in Firestore
-    const userRef = adminDb.collection('users').doc(targetUid);
-    await userRef.set(
-      {
-        role,
-        updatedAt: new Date().toISOString(),
-      },
-      { merge: true }
-    );
-
-    return NextResponse.json({
-      success: true,
-      message: `Role successfully updated to ${role} for user ${targetUid}`,
+    // Confirm the Auth account exists before committing the profile and audit.
+    const authUser = await adminAuth.getUser(targetUid);
+    const result = await updateUserRoleWithAudit({
+      actorUid: actor.uid,
+      targetUid,
+      newRole: role,
+      touchUnchangedRole: false,
     });
+    if (!result.found) return NextResponse.json({ error: 'Target user not found' }, { status: 404 });
+
+    try {
+      await syncUserRoleClaim(targetUid, role, authUser.customClaims);
+    } catch (error: unknown) {
+      logRoleUpdateFailure('Role profile updated but custom claims synchronization failed', error);
+      return NextResponse.json({ error: 'Role updated; authentication settings require retry' }, { status: 503 });
+    }
+
+    return NextResponse.json({ success: true, message: 'User role updated successfully' });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Failed to update role';
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (getRoleUpdateErrorCode(error) === 'auth/user-not-found') {
+      return NextResponse.json({ error: 'Target user not found' }, { status: 404 });
+    }
+    logRoleUpdateFailure('Role update failed', error);
+    return NextResponse.json({ error: 'Unable to update user role' }, { status: 500 });
   }
 }

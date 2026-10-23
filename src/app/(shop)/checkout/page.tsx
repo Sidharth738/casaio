@@ -341,6 +341,7 @@ export default function CheckoutPage() {
             if (createRes.status === 409 && typeof orderData.error === 'string') {
               setCheckoutError(orderData.error);
             }
+            setIsProcessing(false);
             return;
           }
           throw new Error(orderData.error || 'Failed to place order.');
@@ -382,6 +383,7 @@ export default function CheckoutPage() {
       const rzpOrder = await paymentRes.json();
       if (!paymentRes.ok || !rzpOrder.id) {
         await refreshActivePaymentAttempt();
+        setIsProcessing(false);
         return;
       }
       if (rzpOrder.pricing && typeof rzpOrder.pricing.totalAmount === 'number') {
@@ -408,6 +410,7 @@ export default function CheckoutPage() {
           return;
         }
         await refreshActivePaymentAttempt();
+        setIsProcessing(false);
         return;
       }
 

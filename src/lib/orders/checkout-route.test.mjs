@@ -755,6 +755,19 @@ test('route handler: consumes a valid Firestore coupon once when below its usage
   assert.equal(order?.pricing?.discountAmount, 100);
 });
 
+test('route handler: omits absent optional shipping address fields from the persisted order', async () => {
+  const coupon = validFirestoreCoupon();
+  const { documents, request } = setupCouponCheckout(coupon);
+
+  const response = await POST(request(couponRequestId('optional-address-fields')));
+  assert.equal(response.status, 200);
+  const order = [...documents.entries()].find(([path]) => path.startsWith('orders/'))?.[1];
+  assert.ok(order);
+  for (const field of ['alternatePhone', 'addressLine2', 'landmark', 'coordinates']) {
+    assert.equal(Object.hasOwn(order.shippingAddress, field), false, `${field} must be omitted when absent`);
+  }
+});
+
 test('route handler: rejects a registry mapping whose Firestore coupon code differs from the requested code', async () => {
   const coupon = validFirestoreCoupon();
   const { documents, request } = setupCouponCheckout(coupon);
