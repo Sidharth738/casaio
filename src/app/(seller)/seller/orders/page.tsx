@@ -144,7 +144,8 @@ export default function SellerOrdersPage() {
                   <th className="py-3.5 px-4">Date</th>
                   <th className="py-3.5 px-4">Customer & Destination</th>
                   <th className="py-3.5 px-4">Your Items</th>
-                  <th className="py-3.5 px-4">Atelier Payout</th>
+                  <th className="py-3.5 px-4">Order Item Total</th>
+                  <th className="py-3.5 px-4">Payment</th>
                   <th className="py-3.5 px-4">Fulfillment Status</th>
                   <th className="py-3.5 px-4 text-right sm:pr-6">Action</th>
                 </tr>
@@ -196,9 +197,15 @@ export default function SellerOrdersPage() {
                         </p>
                       </td>
 
-                      {/* Atelier Payout */}
+                      {/* Seller item subtotal is not a payout calculation. */}
                       <td className="py-4 px-4 font-mono font-bold text-zinc-950">
                         {formatCurrency(sellerSubtotal)}
+                      </td>
+
+                      <td className="py-4 px-4">
+                        <Badge variant={o.paymentStatus === 'captured' ? 'accent' : 'secondary'} size="sm" className="capitalize">
+                          {o.paymentMethod === 'cod' ? `COD · ${o.paymentStatus.replace(/_/g, ' ')}` : o.paymentStatus.replace(/_/g, ' ')}
+                        </Badge>
                       </td>
 
                       {/* Status */}

@@ -9,6 +9,7 @@ import { getRazorpayConfiguration } from '@/lib/payment/razorpay-config';
 import { RazorpayConfigurationError } from '@/lib/payment/razorpay-config-core';
 import { rupeesToPaise } from '@/lib/orders/money';
 import { stageOnlineReservationConsumed } from '@/lib/coupons/user-usage';
+import { getPaymentConfirmationState } from '@/lib/payment/confirmation-state';
 
 export async function GET(req: NextRequest) {
   try {
@@ -35,6 +36,7 @@ export async function GET(req: NextRequest) {
       paymentStatus: order.payment?.status || 'pending',
       orderStatus: order.orderStatus,
       matchesAttempt: order.payment?.status === 'captured' && order.payment?.razorpayPaymentId === razorpayPaymentId,
+      confirmationState: getPaymentConfirmationState(order),
     }, { headers: { 'Cache-Control': 'no-store' } });
   } catch {
     console.error('Payment status lookup failed');
@@ -120,7 +122,16 @@ export async function POST(req: NextRequest) {
 
       if (currentOrder.payment?.status === 'captured') {
         await stageOnlineReservationConsumed(transaction, adminDb, currentOrder, orderId, now);
-        if (currentOrder.payment?.razorpayPaymentId === razorpayPaymentId) return 'already-captured';
+        if (currentOrder.payment?.razorpayPaymentId === razorpayPaymentId) {
+          if (getPaymentConfirmationState(currentOrder) === 'confirmed') return 'already-captured';
+          transaction.update(orderRef, {
+            'payment.reconciliationRequired': true,
+            'payment.reconciliationStatus': 'open',
+            'payment.reconciliationReason': currentOrder.payment?.reconciliationReason || 'captured_order_state_inconsistent',
+            updatedAt: now,
+          });
+          return 'reconciliation-required';
+        }
         transaction.update(orderRef, {
           'payment.reconciliationRequired': true,
           'payment.reconciliationStatus': 'open',
@@ -128,7 +139,7 @@ export async function POST(req: NextRequest) {
           'payment.reconciliationPaymentIds': FieldValue.arrayUnion(razorpayPaymentId),
           updatedAt: now,
         });
-        return 'payment-mismatch';
+        return 'reconciliation-required';
       }
       const currentNeedsReconciliation = currentOrder.payment?.status === 'failed' || Boolean(currentOrder.payment?.failureFinalizedAt) ||
         currentOrder.orderStatus === 'cancelled' || currentOrder.cancellationStatus === 'completed';
@@ -165,16 +176,28 @@ export async function POST(req: NextRequest) {
         transaction.delete(activeAttemptRef);
       }
 
-      return 'captured';
+      return reconciliationRequired ? 'reconciliation-required' : 'captured';
     });
 
     if (result === 'missing') return NextResponse.json({ error: 'Order not found' }, { status: 404 });
-    if (result === 'order-mismatch' || result === 'payment-mismatch' || result === 'state-conflict') {
+    if (result === 'order-mismatch' || result === 'state-conflict') {
       return NextResponse.json({ error: 'Payment does not match the current order state' }, { status: 409 });
+    }
+
+    if (result === 'reconciliation-required') {
+      return NextResponse.json({
+        success: true,
+        confirmationState: 'reconciliation_required',
+        paymentStatus: 'captured',
+        message: 'Payment was captured, but the order requires review before confirmation.',
+        orderId,
+      }, { status: 202, headers: { 'Cache-Control': 'no-store' } });
     }
 
     return NextResponse.json({
       success: true,
+      confirmationState: 'confirmed',
+      paymentStatus: 'captured',
       alreadyCaptured: result === 'already-captured',
       message: 'Payment verified and order confirmed',
       orderId,

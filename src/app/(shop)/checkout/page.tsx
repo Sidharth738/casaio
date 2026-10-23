@@ -67,6 +67,8 @@ interface ActivePaymentAttempt {
   retryAvailable: boolean;
 }
 
+type CheckoutPaymentState = 'confirmed' | 'pending' | 'reconciliation_required' | 'failed' | 'cancelled';
+
 interface RazorpayOptions {
   key: string;
   amount: number;
@@ -126,6 +128,41 @@ export default function CheckoutPage() {
   const [activePaymentAttempt, setActivePaymentAttempt] = useState<ActivePaymentAttempt | null>(null);
   const [attemptLoading, setAttemptLoading] = useState(false);
 
+  const recoverPersistedOrder = useCallback(async (orderId: string): Promise<CheckoutPaymentState | null> => {
+    try {
+      const response = await fetchPaymentRequest(`/api/orders/${encodeURIComponent(orderId)}/payment-status`, { cache: 'no-store' });
+      if (!response.ok) return null;
+      const data = await response.json();
+      const state = data?.confirmationState as CheckoutPaymentState | undefined;
+      const validStates: CheckoutPaymentState[] = ['confirmed', 'pending', 'reconciliation_required', 'failed', 'cancelled'];
+      if (!state || !validStates.includes(state)) return null;
+
+      if (state === 'confirmed') {
+        clearCart();
+        router.push(`/order-confirmation/${encodeURIComponent(orderId)}`);
+      } else if (state === 'reconciliation_required') {
+        setPaymentNeedsReview(true);
+        setCheckoutError(data.paymentStatus === 'captured'
+          ? 'Payment was captured, but this order needs a review before it can be confirmed. Do not pay again.'
+          : 'This order needs a payment review before it can be confirmed. Do not pay again.');
+      } else if (state === 'pending') {
+        setPaymentNeedsReview(true);
+        setCheckoutError('Payment is still pending confirmation. Do not pay again while we check the order.');
+      } else if (state === 'failed') {
+        setActivePaymentAttempt(null);
+        setPaymentNeedsReview(false);
+        setCheckoutError('The saved payment status is failed. No payment was confirmed; you may place a new order when ready.');
+      } else {
+        setActivePaymentAttempt(null);
+        setPaymentNeedsReview(false);
+        setCheckoutError('This order was cancelled. You may return to checkout to place a new order.');
+      }
+      return state;
+    } catch {
+      return null;
+    }
+  }, [clearCart, router]);
+
   const refreshActivePaymentAttempt = useCallback(async (silent = false) => {
     if (!silent) setAttemptLoading(true);
     try {
@@ -138,6 +175,11 @@ export default function CheckoutPage() {
       }
 
       if (!data.active) {
+        const knownOrderId = activePaymentAttempt?.orderId;
+        if (knownOrderId) {
+          const recoveredState = await recoverPersistedOrder(knownOrderId);
+          if (recoveredState) return;
+        }
         setActivePaymentAttempt(null);
         setPaymentNeedsReview(false);
         if (data.status === 'failed') {
@@ -149,8 +191,10 @@ export default function CheckoutPage() {
       }
 
       if (data.status === 'captured' && typeof data.orderId === 'string') {
-        clearCart();
-        router.push(`/order-confirmation/${data.orderId}`);
+        const recoveredState = await recoverPersistedOrder(data.orderId);
+        if (recoveredState) return;
+        setPaymentNeedsReview(true);
+        setCheckoutError('Payment was captured, but the saved order status could not be checked. Do not pay again.');
         return;
       }
 
@@ -180,7 +224,7 @@ export default function CheckoutPage() {
     } finally {
       if (!silent) setAttemptLoading(false);
     }
-  }, [clearCart, router]);
+  }, [activePaymentAttempt, recoverPersistedOrder]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -359,8 +403,12 @@ export default function CheckoutPage() {
 
       // Existing requests can return a completed order; never create a new charge for it.
       if (orderAlreadyCaptured) {
-        clearCart();
-        router.push(`/order-confirmation/${orderId}`);
+        const recoveredState = await recoverPersistedOrder(orderId);
+        if (!recoveredState) {
+          setPaymentNeedsReview(true);
+          setCheckoutError('The saved payment status could not be checked. Do not pay again until the order is confirmed.');
+        }
+        setIsProcessing(false);
         return;
       }
 
@@ -405,8 +453,16 @@ export default function CheckoutPage() {
         });
 
         if (verifyRes.ok) {
-          clearCart();
-          router.push(`/order-confirmation/${orderId}`);
+          const verification = await verifyRes.json();
+          if (verification.confirmationState === 'confirmed') {
+            clearCart();
+            router.push(`/order-confirmation/${orderId}`);
+          } else if (verification.confirmationState === 'reconciliation_required') {
+            setPaymentNeedsReview(true);
+            setCheckoutError('Payment was captured, but this order needs a review before it can be confirmed. Do not pay again.');
+          } else {
+            await recoverPersistedOrder(orderId);
+          }
           return;
         }
         await refreshActivePaymentAttempt();
@@ -431,19 +487,30 @@ export default function CheckoutPage() {
           razorpay_order_id: string;
           razorpay_signature: string;
         }) {
-          const showUnconfirmedStatus = (status: 'pending' | 'failed' | 'other' | 'unknown') => {
-            setPaymentNeedsReview(true);
-            if (status === 'pending') {
-              setCheckoutError('Your payment is still being confirmed. Do not pay again. Check your orders shortly or contact concierge support.');
-            } else if (status === 'other') {
-              setCheckoutError('We could not match this payment to the current order. Do not pay again; check your orders or contact concierge support.');
-            } else {
-              setCheckoutError('We could not confirm the payment status. Do not pay again; check your orders or contact concierge support.');
+          const showUnconfirmedStatus = (status: Exclude<CheckoutPaymentState, 'confirmed'> | 'other' | 'unknown') => {
+            if (status === 'failed') {
+              setPaymentNeedsReview(false);
+              setActivePaymentAttempt(null);
+              setCheckoutError('The saved payment status is failed. No payment was confirmed; you may place a new order when ready.');
+              return;
             }
+            if (status === 'cancelled') {
+              setPaymentNeedsReview(false);
+              setActivePaymentAttempt(null);
+              setCheckoutError('This order was cancelled. You may return to checkout to place a new order.');
+              return;
+            }
+            setPaymentNeedsReview(true);
+            setCheckoutError(status === 'reconciliation_required'
+              ? 'Payment was captured, but this order needs a review before it can be confirmed. Do not pay again.'
+              : status === 'pending'
+                ? 'Your payment is still being confirmed. Do not pay again. Check your orders shortly or contact concierge support.'
+                : status === 'other'
+                  ? 'We could not match this payment to the current order. Do not pay again; check your orders or contact concierge support.'
+                  : 'We could not confirm the payment status. Do not pay again; check your orders or contact concierge support.');
           };
 
-          const checkAuthoritativeStatus = async (): Promise<'captured' | 'failed' | 'pending' | 'other' | 'unknown'> => {
-            let verificationData: { paymentStatus?: string; matchesAttempt?: boolean } | null = null;
+          const checkAuthoritativeStatus = async (): Promise<CheckoutPaymentState | 'other' | 'unknown'> => {
             try {
               const params = new URLSearchParams({
                 orderId,
@@ -452,34 +519,47 @@ export default function CheckoutPage() {
               });
               const statusRes = await fetchPaymentRequest(`/api/payment/verify?${params.toString()}`, { cache: 'no-store' });
               if (statusRes.ok) {
-                verificationData = await statusRes.json();
-                if (verificationData?.paymentStatus === 'captured') {
-                  return verificationData.matchesAttempt ? 'captured' : 'other';
+                const verificationData = await statusRes.json();
+                if (verificationData?.paymentStatus === 'captured' && !verificationData.matchesAttempt) return 'other';
+                if (verificationData?.confirmationState && verificationData.confirmationState !== 'pending') {
+                  return verificationData.confirmationState;
                 }
+                if (verificationData?.paymentStatus === 'pending') return 'pending';
               }
             } catch {
-              // Continue to the server's Razorpay reconciliation even if this lookup timed out.
+              // Continue with the owner-scoped persisted order lookup.
+            }
+
+            try {
+              const persistedRes = await fetchPaymentRequest(`/api/orders/${encodeURIComponent(orderId)}/payment-status`, { cache: 'no-store' });
+              if (persistedRes.ok) {
+                const persisted = await persistedRes.json();
+                if (['confirmed', 'pending', 'reconciliation_required', 'failed', 'cancelled'].includes(persisted.confirmationState)) {
+                  return persisted.confirmationState;
+                }
+              } else if (persistedRes.status === 404) {
+                return 'other';
+              }
+            } catch {
+              // A timeout remains uncertain; continue to the existing payment-attempt check.
             }
 
             try {
               const activeRes = await fetchPaymentRequest('/api/payment/attempt', { cache: 'no-store' });
               const activeData = await activeRes.json();
-              if (activeData.status === 'captured') return 'captured';
+              // The attempt endpoint's captured result is insufficient to establish
+              // normal confirmation if the owner-scoped order read was unavailable.
+              if (activeData.status === 'captured') return 'unknown';
               if (activeData.status === 'failed') return 'failed';
-              return activeData.active || verificationData?.paymentStatus === 'pending' ? 'pending' : 'unknown';
+              return activeData.active ? 'pending' : 'unknown';
             } catch {
               return 'unknown';
             }
           };
 
           const confirmOrder = async () => {
-            try {
-              await fetchPaymentRequest('/api/payment/attempt', { cache: 'no-store' });
-            } catch {
-              // The order is already verified; the lock can be cleared on the next status refresh.
-            }
-            clearCart();
-            router.push(`/order-confirmation/${orderId}`);
+            const state = await recoverPersistedOrder(orderId);
+            if (state !== 'confirmed') showUnconfirmedStatus(state || 'unknown');
           };
 
           try {
@@ -495,17 +575,24 @@ export default function CheckoutPage() {
             });
 
             if (verifyRes.ok) {
-              await confirmOrder();
+              const verification = await verifyRes.json();
+              if (verification.confirmationState === 'reconciliation_required') {
+                showUnconfirmedStatus('reconciliation_required');
+              } else if (verification.confirmationState === 'confirmed') {
+                await confirmOrder();
+              } else {
+                const status = await checkAuthoritativeStatus();
+                if (status === 'confirmed') await confirmOrder();
+                else showUnconfirmedStatus(status);
+              }
             } else {
               const status = await checkAuthoritativeStatus();
-              if (status === 'captured') await confirmOrder();
-              else if (status === 'failed') await refreshActivePaymentAttempt();
+              if (status === 'confirmed') await confirmOrder();
               else showUnconfirmedStatus(status);
             }
           } catch {
             const status = await checkAuthoritativeStatus();
-            if (status === 'captured') await confirmOrder();
-            else if (status === 'failed') await refreshActivePaymentAttempt();
+            if (status === 'confirmed') await confirmOrder();
             else showUnconfirmedStatus(status);
           } finally {
             setIsProcessing(false);

@@ -3,6 +3,8 @@ import type {
   Order,
   OrderStatus,
   OrderTimelineEvent,
+  PaymentMethod,
+  PaymentStatus,
 } from '@/types';
 
 export interface SellerOrderItem {
@@ -48,6 +50,8 @@ export interface SellerOrder {
   orderNumber: string;
   createdAt: string;
   orderStatus: OrderStatus;
+  paymentMethod: PaymentMethod;
+  paymentStatus: PaymentStatus;
   items: SellerOrderItem[];
   sellerSubtotal: number;
   customerDetails: SellerOrderCustomerDetails;
@@ -127,6 +131,8 @@ export function projectSellerOrder(order: Order, sellerId: string): SellerOrder 
     orderNumber: order.orderNumber,
     createdAt: order.createdAt,
     orderStatus: order.orderStatus,
+    paymentMethod: order.payment?.method || 'razorpay',
+    paymentStatus: order.payment?.status || 'pending',
     items: projectedItems,
     sellerSubtotal,
     customerDetails,

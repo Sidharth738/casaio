@@ -46,6 +46,7 @@ Module._load = function (request, ...args) {
 const { POST: verifyPayment } = await import('@/app/api/payment/verify/route');
 const { POST: paymentWebhook } = await import('@/app/api/payment/webhook/route');
 const { GET: checkPaymentAttempt } = await import('@/app/api/payment/attempt/route');
+const { GET: getOrderPaymentStatus } = await import('@/app/api/orders/[orderId]/payment-status/route');
 Module._resolveFilename = originalResolveFilename;
 Module._load = originalLoad;
 
@@ -56,6 +57,7 @@ const paymentId = 'pay_local-1';
 const webhookSecret = 'fake-local-webhook-secret';
 const keySecret = 'fake-local-key-secret';
 let gatewayPaymentOverride;
+let authenticatedUserId = userId;
 
 function setWebhookTestMode() {
   process.env.NODE_ENV = 'test';
@@ -94,6 +96,7 @@ function createHarness({ order = initialOrder(), activeAttempt = { orderId, user
     [`orders/${orderId}`, structuredClone(order)],
     [`checkoutRequests/_active_razorpay_${userId}`, structuredClone(activeAttempt)],
     [`users/${userId}`, { role: 'customer', status: 'active' }],
+    ['users/customer-other', { role: 'customer', status: 'active' }],
     ...(usagePath ? [
       [usagePath, { state: 'ready', couponId, customerId: userId, occupiedCount: 1 }],
       [`${usagePath}/reservations/${orderId}`, {
@@ -118,12 +121,18 @@ function createHarness({ order = initialOrder(), activeAttempt = { orderId, user
       const parts = field.split('.');
       let target = current;
       for (const part of parts.slice(0, -1)) target = target[part] ??= {};
-      target[parts.at(-1)] = value;
+      const fieldName = parts.at(-1);
+      if (value?.constructor?.name === 'ArrayUnionTransform') {
+        const existing = Array.isArray(target[fieldName]) ? target[fieldName] : [];
+        target[fieldName] = [...new Set([...existing, ...value.elements])];
+      } else {
+        target[fieldName] = value;
+      }
     }
     records.set(path, current);
   };
 
-  mock.method(adminAuth, 'verifySessionCookie', async () => ({ uid: userId, email: 'customer@example.invalid' }));
+  mock.method(adminAuth, 'verifySessionCookie', async () => ({ uid: authenticatedUserId, email: 'customer@example.invalid' }));
   mock.method(adminDb, 'collection', (collectionName) => ({
     doc: (id) => ref(`${collectionName}/${id}`),
     where: (field, _operator, value) => ({
@@ -181,6 +190,12 @@ function createHarness({ order = initialOrder(), activeAttempt = { orderId, user
   };
 }
 
+function orderPaymentStatusRequest() {
+  return {
+    cookies: { get: (name) => name === 'casaio_session' ? { value: 'fake-session' } : undefined },
+  };
+}
+
 function verificationRequest(body) {
   return {
     cookies: { get: (name) => name === 'casaio_session' ? { value: 'fake-session' } : undefined },
@@ -215,6 +230,83 @@ beforeEach(() => {
   mock.restoreAll();
   setWebhookTestMode();
   gatewayPaymentOverride = undefined;
+  authenticatedUserId = userId;
+});
+
+test('browser recovery reads persisted capture after webhook removed the active lock', async () => {
+  const harness = createHarness();
+  const webhookResponse = await paymentWebhook(signedWebhook(capturedWebhook()));
+  assert.equal(webhookResponse.status, 200);
+  assert.equal(harness.attempt(), undefined);
+
+  const statusResponse = await getOrderPaymentStatus(orderPaymentStatusRequest(), { params: Promise.resolve({ orderId }) });
+  const status = await statusResponse.json();
+  assert.equal(statusResponse.status, 200);
+  assert.equal(status.confirmationState, 'confirmed');
+  assert.equal(status.paymentStatus, 'captured');
+  assert.equal(status.orderStatus, 'confirmed');
+  assert.equal('razorpayPaymentId' in status, false);
+});
+
+test('captured payment requiring reconciliation returns explicit non-confirmation result', async () => {
+  const harness = createHarness({ order: initialOrder({
+    payment: { method: 'razorpay', status: 'failed', razorpayOrderId },
+    orderStatus: 'cancelled',
+  }) });
+  const response = await verifyPayment(verificationRequest({
+    orderId, razorpayOrderId, razorpayPaymentId: paymentId, razorpaySignature: paymentSignature(),
+  }));
+  const result = await response.json();
+
+  assert.equal(response.status, 202);
+  assert.equal(result.confirmationState, 'reconciliation_required');
+  assert.equal(result.paymentStatus, 'captured');
+  assert.equal(harness.order().payment.status, 'captured');
+  assert.equal(harness.order().payment.reconciliationRequired, true);
+  assert.equal(harness.order().orderStatus, 'cancelled');
+
+  const statusResponse = await getOrderPaymentStatus(orderPaymentStatusRequest(), { params: Promise.resolve({ orderId }) });
+  assert.equal((await statusResponse.json()).confirmationState, 'reconciliation_required');
+});
+
+test('additional captured payment is reported as reconciliation-required without replacing the recorded capture', async () => {
+  const harness = createHarness({ order: initialOrder({
+    orderStatus: 'confirmed',
+    payment: { method: 'razorpay', status: 'captured', razorpayOrderId, razorpayPaymentId: 'pay_primary' },
+  }) });
+  const response = await verifyPayment(verificationRequest({
+    orderId, razorpayOrderId, razorpayPaymentId: paymentId, razorpaySignature: paymentSignature(),
+  }));
+  const result = await response.json();
+
+  assert.equal(response.status, 202);
+  assert.equal(result.confirmationState, 'reconciliation_required');
+  assert.equal(harness.order().payment.razorpayPaymentId, 'pay_primary');
+  assert.equal(harness.order().payment.reconciliationRequired, true);
+  assert.deepEqual(harness.order().payment.reconciliationPaymentIds, [paymentId]);
+});
+
+test('pending, failed, and reconciliation states never appear as a successful confirmation', async () => {
+  for (const [payment, orderStatus, expected] of [
+    [{ method: 'razorpay', status: 'pending', razorpayOrderId }, 'pending', 'pending'],
+    [{ method: 'razorpay', status: 'failed', razorpayOrderId }, 'pending', 'failed'],
+    [{ method: 'razorpay', status: 'captured', razorpayOrderId, reconciliationRequired: true }, 'pending', 'reconciliation_required'],
+  ]) {
+    createHarness({ order: initialOrder({ payment, orderStatus }) });
+    const response = await getOrderPaymentStatus(orderPaymentStatusRequest(), { params: Promise.resolve({ orderId }) });
+    const result = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(result.confirmationState, expected);
+    assert.notEqual(result.confirmationState, 'confirmed');
+  }
+});
+
+test('customer cannot read payment status for another customer order', async () => {
+  createHarness();
+  authenticatedUserId = 'customer-other';
+  const response = await getOrderPaymentStatus(orderPaymentStatusRequest(), { params: Promise.resolve({ orderId }) });
+  assert.equal(response.status, 404);
+  assert.deepEqual(await response.json(), { error: 'Order not found' });
 });
 
 test('client verification persists a capture and clears its active attempt', async () => {

@@ -170,12 +170,19 @@ export default function SellerOrderDetailPage() {
 
         <div className="text-right self-start sm:self-auto">
           <span className="text-[10px] text-zinc-400 uppercase tracking-wider block">
-            Your Atelier Payout
+            Order Item Total
           </span>
           <span className="font-mono font-bold text-xl text-zinc-950">
             {formatCurrency(sellerSubtotal)}
           </span>
         </div>
+      </div>
+
+      <div className="p-4 rounded-xl border border-zinc-200 bg-white text-xs text-zinc-700">
+        Payment status: <span className="font-semibold capitalize">{order.paymentMethod === 'cod' ? `Cash on Delivery · ${order.paymentStatus.replace(/_/g, ' ')}` : order.paymentStatus.replace(/_/g, ' ')}</span>
+        {order.paymentMethod === 'razorpay' && order.paymentStatus !== 'captured' && (
+          <p className="mt-1 text-zinc-500">Online payment is not captured. Dispatch remains unavailable until payment is confirmed.</p>
+        )}
       </div>
 
       {successMessage && (

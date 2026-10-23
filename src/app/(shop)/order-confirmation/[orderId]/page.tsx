@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import {
   CheckCircle,
+  AlertCircle,
   MapPin,
   ArrowRight,
   ShoppingBag,
@@ -16,6 +17,7 @@ import {
 } from 'lucide-react';
 import type { Order } from '@/types';
 import { getOrderById } from '@/lib/firebase/firestore';
+import { getPaymentConfirmationState } from '@/lib/payment/confirmation-state';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency } from '@/lib/utils';
@@ -72,23 +74,40 @@ export default function OrderConfirmationPage() {
     );
   }
 
+  const confirmationState = getPaymentConfirmationState(order);
+  const isConfirmed = confirmationState === 'confirmed';
+
   return (
     <div className="py-12 bg-[#FAFAF8] min-h-screen">
       <div className="max-w-4xl mx-auto px-4 sm:px-6">
-        {/* Success Banner */}
+        {/* Persisted order state */}
         <div className="text-center mb-10 space-y-3">
-          <div className="w-16 h-16 rounded-full bg-emerald-100 mx-auto flex items-center justify-center text-emerald-600 shadow-xs">
-            <CheckCircle className="w-8 h-8 stroke-[2.2]" />
+          <div className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center shadow-xs ${isConfirmed ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-700'}`}>
+            {isConfirmed
+              ? <CheckCircle className="w-8 h-8 stroke-[2.2]" />
+              : confirmationState === 'pending'
+                ? <Loader2 className="w-8 h-8 animate-spin" />
+                : <AlertCircle className="w-8 h-8" />}
           </div>
-          <Badge variant="accent" size="sm" className="uppercase tracking-widest font-mono text-[10px]">
-            Order Confirmed
+          <Badge variant={isConfirmed ? 'accent' : 'secondary'} size="sm" className="uppercase tracking-widest font-mono text-[10px]">
+            {confirmationState === 'confirmed' ? 'Order Confirmed' : confirmationState === 'reconciliation_required' ? 'Payment Review Required' : confirmationState === 'failed' ? 'Payment Failed' : confirmationState === 'cancelled' ? 'Order Cancelled' : 'Payment Pending'}
           </Badge>
           <h1 className="font-serif text-3xl sm:text-4xl font-bold text-zinc-950">
-            Thank you for your order!
+            {isConfirmed ? 'Thank you for your order!' : confirmationState === 'reconciliation_required' ? 'Your payment needs review' : confirmationState === 'failed' ? 'Payment was not confirmed' : confirmationState === 'cancelled' ? 'This order was cancelled' : 'We are confirming your payment'}
           </h1>
           <p className="text-xs text-zinc-500 max-w-md mx-auto">
-            Order <span className="font-mono font-bold text-zinc-900">{order.orderNumber}</span> has been confirmed. A confirmation receipt has been sent to{' '}
-            <span className="font-medium text-zinc-900">{order.customerDetails.email}</span>.
+            Order <span className="font-mono font-bold text-zinc-900">{order.orderNumber}</span>{' '}
+            {isConfirmed
+              ? <>is confirmed. A confirmation receipt has been sent to <span className="font-medium text-zinc-900">{order.customerDetails.email}</span>.</>
+              : confirmationState === 'reconciliation_required'
+                ? order.payment.status === 'captured'
+                  ? 'has a captured payment that requires review before fulfillment confirmation. Please do not pay again.'
+                  : 'requires a payment review before fulfillment confirmation. Please do not pay again.'
+                : confirmationState === 'failed'
+                  ? 'has no confirmed payment. You can contact support if you believe your bank completed the payment.'
+                  : confirmationState === 'cancelled'
+                    ? 'is cancelled. Contact support if you need help with a payment.'
+                    : 'is saved, but payment is still pending. Please do not pay again while the status is checked.'}
           </p>
         </div>
 
@@ -99,8 +118,8 @@ export default function OrderConfirmationPage() {
               <Package className="w-5 h-5 text-zinc-700" />
               <div>
                 <p className="text-xs font-semibold text-zinc-900">Current Status</p>
-                <p className="text-[11px] text-zinc-500">
-                  Direct dispatch being prepared by artisan ateliers
+                  <p className="text-[11px] text-zinc-500">
+                  {isConfirmed ? 'Direct dispatch being prepared by artisan ateliers' : 'Order fulfillment will proceed after payment confirmation'}
                 </p>
               </div>
             </div>
@@ -111,12 +130,12 @@ export default function OrderConfirmationPage() {
 
           {/* Timeline steps */}
           <div className="pt-6 grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
-            <div className="space-y-1.5">
-              <div className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center mx-auto text-xs font-bold">
+              <div className={`space-y-1.5 ${isConfirmed ? '' : 'opacity-50'}`}>
+              <div className={`w-7 h-7 rounded-full ${isConfirmed ? 'bg-emerald-600 text-white' : 'bg-zinc-200 text-zinc-600'} flex items-center justify-center mx-auto text-xs font-bold`}>
                 ✓
               </div>
-              <p className="text-xs font-bold text-zinc-900">Confirmed</p>
-              <p className="text-[10px] text-zinc-400">Order received</p>
+              <p className="text-xs font-bold text-zinc-900">{isConfirmed ? 'Confirmed' : 'Payment'}</p>
+              <p className="text-[10px] text-zinc-400">{isConfirmed ? 'Order received' : confirmationState.replace(/_/g, ' ')}</p>
             </div>
 
             <div className="space-y-1.5">
@@ -211,7 +230,7 @@ export default function OrderConfirmationPage() {
                 <span className="text-emerald-700 font-bold uppercase text-[11px]">Free</span>
               </div>
               <div className="pt-3 border-t border-zinc-200 flex justify-between items-baseline font-bold text-zinc-950">
-                <span className="font-serif text-base">Total Amount Paid</span>
+                <span className="font-serif text-base">{order.payment.status === 'captured' ? 'Total Amount Paid' : 'Order Total'}</span>
                 <span className="font-serif text-xl font-mono">
                   {formatCurrency(order.pricing.totalAmount)}
                 </span>
@@ -269,17 +288,9 @@ export default function OrderConfirmationPage() {
                     size="sm"
                     className="capitalize"
                   >
-                    {order.payment.status}
+                    {order.payment.method === 'cod' && order.payment.status === 'pending' ? 'Due on delivery' : order.payment.status.replace(/_/g, ' ')}
                   </Badge>
                 </div>
-                {order.payment.razorpayPaymentId && (
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500">Payment ID</span>
-                    <span className="font-mono text-[11px] text-zinc-700 truncate max-w-[140px]">
-                      {order.payment.razorpayPaymentId}
-                    </span>
-                  </div>
-                )}
               </div>
             </div>
 

@@ -140,6 +140,21 @@ test('seller A cannot obtain shared cart pricing, discounts, coupons, or payment
   assert.equal(JSON.stringify(projectionA).includes('11025'), false); // customer's total
 });
 
+test('seller projection exposes payment status without exposing payment identifiers', () => {
+  const captured = projectSellerOrder(mockOrder, 'seller_a_artisan');
+  assert.ok(captured);
+  assert.equal(captured.paymentMethod, 'razorpay');
+  assert.equal(captured.paymentStatus, 'captured');
+  assert.equal(JSON.stringify(captured).includes('pay_secret_rzp'), false);
+
+  const pending = projectSellerOrder({
+    ...mockOrder,
+    payment: { method: 'razorpay', status: 'pending', razorpayOrderId: 'private-id' },
+  }, 'seller_a_artisan');
+  assert.equal(pending?.paymentStatus, 'pending');
+  assert.equal(JSON.stringify(pending).includes('private-id'), false);
+});
+
 test('seller A cannot obtain sensitive customer account credentials or unnecessary metadata', () => {
   const projectionA = projectSellerOrder(mockOrder, 'seller_a_artisan');
   assert.ok(projectionA);
