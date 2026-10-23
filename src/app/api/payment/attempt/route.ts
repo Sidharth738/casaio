@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'node:crypto';
 import Razorpay from 'razorpay';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase/admin';
@@ -20,11 +21,14 @@ function json(data: Record<string, unknown>, status = 200) {
 }
 
 export async function GET(request: NextRequest) {
+  const correlationId = randomUUID();
+  let failureCategory = 'unexpected_internal_error';
   try {
     const user = await requireServerUser(request);
     if (!user) return json({ error: 'Authentication required' }, 401);
 
     const lockRef = getActivePaymentAttemptRef(user.uid);
+    failureCategory = 'firestore_read_failure';
     const lockSnap = await lockRef.get();
     if (!lockSnap.exists) return json({ active: false });
     const lock = lockSnap.data()!;
@@ -34,6 +38,7 @@ export async function GET(request: NextRequest) {
 
     const orderRef = adminDb.collection('orders').doc(lock.orderId);
     const orderSnap = await orderRef.get();
+    failureCategory = 'unexpected_internal_error';
     const order = orderSnap.data();
     if (!orderSnap.exists || order?.customerId !== user.uid || order.payment?.method !== 'razorpay') {
       return json({ active: true, status: 'unknown', retryAvailable: false });
@@ -48,6 +53,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (order.payment?.status === 'captured') {
+      failureCategory = 'firestore_transaction_failure';
       await adminDb.runTransaction(async (transaction) => {
         const [currentOrderSnap, currentLockSnap] = await Promise.all([
           transaction.get(orderRef),
@@ -62,6 +68,7 @@ export async function GET(request: NextRequest) {
           transaction.delete(lockRef);
         }
       });
+      failureCategory = 'unexpected_internal_error';
       return activeReply('captured');
     }
 
@@ -76,7 +83,9 @@ export async function GET(request: NextRequest) {
     }
 
     const razorpayOrderId = order.payment?.razorpayOrderId;
+    failureCategory = 'razorpay_configuration_failure';
     const configuration = getRazorpayConfiguration();
+    failureCategory = 'unexpected_internal_error';
     if (!razorpayOrderId) {
       return activeReply('pending', Boolean(razorpayOrderId));
     }
@@ -89,12 +98,14 @@ export async function GET(request: NextRequest) {
       return activeReply('unknown');
     }
 
+    failureCategory = 'razorpay_provider_failure';
     const razorpay = new Razorpay({ key_id: configuration.keyId, key_secret: configuration.keySecret });
     configureRazorpayTimeout(razorpay);
     const [providerOrder, paymentList] = await Promise.all([
       razorpay.orders.fetch(razorpayOrderId),
       razorpay.orders.fetchPayments(razorpayOrderId),
     ]);
+    failureCategory = 'invalid_stored_or_provider_data';
     const expectedAmount = rupeesToPaise(Number(order.pricing?.totalAmount || 0));
     if (providerOrder.id !== razorpayOrderId || providerOrder.amount !== expectedAmount ||
         providerOrder.currency !== 'INR' || !Array.isArray(paymentList.items)) {
@@ -112,6 +123,7 @@ export async function GET(request: NextRequest) {
         .map((payment) => payment.id)
         .filter((id): id is string => Boolean(id));
       const now = new Date().toISOString();
+      failureCategory = 'firestore_transaction_failure';
       const result = await adminDb.runTransaction(async (transaction) => {
         const [currentOrderSnap, currentLockSnap] = await Promise.all([
           transaction.get(orderRef),
@@ -166,6 +178,7 @@ export async function GET(request: NextRequest) {
         transaction.delete(lockRef);
         return 'captured';
       });
+      failureCategory = 'unexpected_internal_error';
       return activeReply(result === 'conflict' ? 'unknown' : 'captured');
     }
 
@@ -175,8 +188,10 @@ export async function GET(request: NextRequest) {
     );
     const hasAuthorized = authorizedPayments.length > 0;
     const hasUnfinished = paymentList.items.some((payment) => payment.status === 'created');
+    failureCategory = 'unexpected_internal_error';
     if (hasAuthorized) {
       const authorizedIds = authorizedPayments.map((payment) => payment.id).filter((id): id is string => Boolean(id));
+      failureCategory = 'firestore_transaction_failure';
       await adminDb.runTransaction(async (transaction) => {
         const snapshot = await transaction.get(orderRef);
         const currentOrder = snapshot.data();
@@ -219,6 +234,7 @@ export async function GET(request: NextRequest) {
           });
         }
       });
+      failureCategory = 'unexpected_internal_error';
       return activeReply('authorized');
     }
     if (providerOrder.status === 'attempted' && paymentList.items.length > 0 &&
@@ -230,7 +246,13 @@ export async function GET(request: NextRequest) {
     }
     return activeReply('unknown');
   } catch {
-    console.error('Active payment status lookup failed');
-    return json({ active: true, status: 'unknown', retryAvailable: false }, 503);
+    console.error('payment_attempt_lookup_failed', { correlationId, category: failureCategory });
+    return json({
+      active: true,
+      status: 'unknown',
+      retryAvailable: false,
+      error: 'Payment status is temporarily unavailable. Do not pay again until it is confirmed.',
+      correlationId,
+    }, 503);
   }
 }

@@ -24,14 +24,20 @@ class FakeRazorpay {
       }),
     };
     this.orders = {
-      fetch: async (id) => ({ id, amount: 12500, currency: 'INR' }),
-      fetchPayments: async () => ({ items: [{
-        id: paymentId,
-        order_id: razorpayOrderId,
-        amount: 12500,
-        currency: 'INR',
-        status: 'captured',
-      }] }),
+      fetch: async (id) => {
+        if (razorpayStatusError) throw razorpayStatusError;
+        return { id, amount: 12500, currency: 'INR' };
+      },
+      fetchPayments: async () => {
+        if (razorpayStatusError) throw razorpayStatusError;
+        return { items: [{
+          id: paymentId,
+          order_id: razorpayOrderId,
+          amount: 12500,
+          currency: 'INR',
+          status: 'captured',
+        }] };
+      },
     };
   }
 }
@@ -58,6 +64,8 @@ const webhookSecret = 'fake-local-webhook-secret';
 const keySecret = 'fake-local-key-secret';
 let gatewayPaymentOverride;
 let authenticatedUserId = userId;
+let paymentAttemptLockReadError;
+let razorpayStatusError;
 
 function setWebhookTestMode() {
   process.env.NODE_ENV = 'test';
@@ -89,7 +97,7 @@ function initialOrder(overrides = {}) {
   };
 }
 
-function createHarness({ order = initialOrder(), activeAttempt = { orderId, userId }, capturePaymentId = paymentId } = {}) {
+function createHarness({ order = initialOrder(), activeAttempt = { orderId, userId }, missingActiveAttempt = false, capturePaymentId = paymentId } = {}) {
   const couponId = order.couponApplied?.couponId;
   const usagePath = couponId ? `couponUserUsage/${getCouponUserUsageKey(couponId, userId)}` : null;
   const records = new Map([
@@ -104,13 +112,19 @@ function createHarness({ order = initialOrder(), activeAttempt = { orderId, user
       }],
     ] : []),
   ]);
+  if (missingActiveAttempt) records.delete(`checkoutRequests/_active_razorpay_${userId}`);
   const operations = [];
   let queue = Promise.resolve();
 
   const ref = (path) => ({
     id: path.split('/').at(-1),
     path,
-    get: async () => snapshot(records.get(path)),
+    get: async () => {
+      if (path === `checkoutRequests/_active_razorpay_${userId}` && paymentAttemptLockReadError) {
+        throw paymentAttemptLockReadError;
+      }
+      return snapshot(records.get(path));
+    },
     update: async (changes) => applyUpdate(path, changes),
     collection: (name) => ({ doc: (id) => ref(`${path}/${name}/${id}`) }),
   });
@@ -231,6 +245,8 @@ beforeEach(() => {
   setWebhookTestMode();
   gatewayPaymentOverride = undefined;
   authenticatedUserId = userId;
+  paymentAttemptLockReadError = undefined;
+  razorpayStatusError = undefined;
 });
 
 test('browser recovery reads persisted capture after webhook removed the active lock', async () => {
@@ -369,6 +385,68 @@ test('payment-attempt reconciliation consumes an existing online slot without in
   assert.equal(harness.order().payment.status, 'captured');
   assert.equal(harness.couponUsage().occupiedCount, 1);
   assert.equal(harness.couponReservation().state, 'consumed');
+});
+
+test('payment attempt treats a missing lock as an ordinary inactive state', async () => {
+  createHarness({ missingActiveAttempt: true });
+  const response = await checkPaymentAttempt(orderPaymentStatusRequest());
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { active: false });
+});
+
+test('payment attempt returns a safe correlated 503 and redacted Firestore category', async () => {
+  createHarness();
+  paymentAttemptLockReadError = new Error('private customer-local-1 pay_local-1 credential-value');
+  const logs = [];
+  mock.method(console, 'error', (...args) => logs.push(args));
+
+  const response = await checkPaymentAttempt(orderPaymentStatusRequest());
+  const body = await response.json();
+  assert.equal(response.status, 503);
+  assert.equal(body.active, true);
+  assert.equal(body.status, 'unknown');
+  assert.equal(body.retryAvailable, false);
+  assert.match(body.correlationId, /^[0-9a-f-]{36}$/i);
+  assert.match(body.error, /Do not pay again/);
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0][0], 'payment_attempt_lookup_failed');
+  assert.deepEqual(logs[0][1], {
+    correlationId: body.correlationId,
+    category: 'firestore_read_failure',
+  });
+  const diagnostic = JSON.stringify({ logs, body });
+  for (const sensitive of ['credential-value', 'customer-local-1', 'pay_local-1', razorpayOrderId]) {
+    assert.equal(diagnostic.includes(sensitive), false);
+  }
+});
+
+test('payment attempt classifies configuration and provider failures distinctly without exposing details', async () => {
+  createHarness();
+  const logs = [];
+  mock.method(console, 'error', (...args) => logs.push(args));
+
+  process.env.RAZORPAY_MODE = 'invalid-private-value';
+  const configurationResponse = await checkPaymentAttempt(orderPaymentStatusRequest());
+  assert.equal(configurationResponse.status, 503);
+  assert.equal(logs.at(-1)[1].category, 'razorpay_configuration_failure');
+  assert.equal(JSON.stringify(logs).includes('invalid-private-value'), false);
+
+  setWebhookTestMode();
+  razorpayStatusError = new Error('private credential-value pay_local-1');
+  const providerResponse = await checkPaymentAttempt(orderPaymentStatusRequest());
+  assert.equal(providerResponse.status, 503);
+  assert.equal(logs.at(-1)[1].category, 'razorpay_provider_failure');
+  const diagnostics = JSON.stringify({ logs, body: await providerResponse.json() });
+  for (const sensitive of ['credential-value', 'customer-local-1', 'pay_local-1', razorpayOrderId]) {
+    assert.equal(diagnostics.includes(sensitive), false);
+  }
+});
+
+test('payment attempt still requires an authenticated customer session', async () => {
+  createHarness();
+  const response = await checkPaymentAttempt({ cookies: { get: () => undefined } });
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { error: 'Authentication required' });
 });
 
 test('duplicate verification and webhook capture events do not duplicate capture or fulfillment', async () => {
