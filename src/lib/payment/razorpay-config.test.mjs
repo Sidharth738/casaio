@@ -49,12 +49,36 @@ test('accepts live credentials only with the production opt-in', () => {
     RAZORPAY_KEY_ID: 'rzp_live_unit_key_123',
     RAZORPAY_KEY_SECRET: 'unit-live-key-secret',
     RAZORPAY_KEY_SECRET_MODE: 'live',
+    RAZORPAY_WEBHOOK_SECRET: 'unit-live-webhook-secret',
+    RAZORPAY_WEBHOOK_SECRET_MODE: 'live',
   });
   assert.equal(resolveRazorpayConfiguration(env).mode, 'live');
+  assert.deepEqual(resolveRazorpayWebhookSecret(env), {
+    mode: 'live',
+    secret: 'unit-live-webhook-secret',
+  });
   assertConfigCode(() => resolveRazorpayConfiguration({
     ...env,
     RAZORPAY_LIVE_PAYMENTS_ENABLED: 'false',
   }), 'live_not_authorized');
+  assertConfigCode(() => resolveRazorpayWebhookSecret({
+    ...env,
+    RAZORPAY_WEBHOOK_SECRET_MODE: 'test',
+  }), 'webhook_configuration_invalid');
+  assertConfigCode(() => resolveRazorpayConfiguration({
+    ...env,
+    RAZORPAY_SIMULATION_ENABLED: 'true',
+  }), 'simulation_not_authorized');
+});
+
+test('rejects test mode in production even when test credentials are otherwise consistent', () => {
+  assertConfigCode(() => resolveRazorpayConfiguration(testEnvironment({
+    NODE_ENV: 'production',
+    RAZORPAY_MODE: 'test',
+    RAZORPAY_LIVE_PAYMENTS_ENABLED: 'false',
+    RAZORPAY_KEY_ID: 'rzp_test_unit_key_123',
+    RAZORPAY_KEY_SECRET_MODE: 'test',
+  })), 'test_mode_not_authorized_in_production');
 });
 
 test('rejects test key IDs paired with live secret mode and live key IDs paired with test secret mode', () => {

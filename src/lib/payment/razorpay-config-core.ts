@@ -49,12 +49,18 @@ export function resolveRazorpayConfiguration(
   if (!isMode(modeValue)) throw new RazorpayConfigurationError('invalid_mode');
 
   const livePaymentsEnabled = env.RAZORPAY_LIVE_PAYMENTS_ENABLED === 'true';
+  if (nodeEnv === 'production' && env.RAZORPAY_SIMULATION_ENABLED === 'true') {
+    throw new RazorpayConfigurationError('simulation_not_authorized');
+  }
   if (modeValue === 'live') {
     if (nodeEnv !== 'production' || !livePaymentsEnabled) {
       throw new RazorpayConfigurationError('live_not_authorized');
     }
   } else if (livePaymentsEnabled) {
     throw new RazorpayConfigurationError('ambiguous_live_configuration');
+  }
+  if (nodeEnv === 'production' && modeValue === 'test') {
+    throw new RazorpayConfigurationError('test_mode_not_authorized_in_production');
   }
 
   if (modeValue === 'simulation') {
