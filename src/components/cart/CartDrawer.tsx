@@ -2,11 +2,11 @@
 
 import React, { useEffect } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { X, Trash2, ShoppingBag, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useCart } from '@/hooks/useCart';
 import { Button } from '@/components/ui/Button';
 import { formatCurrency } from '@/lib/utils';
+import { SafeProductImage } from '@/components/product/SafeProductImage';
 
 export function CartDrawer() {
   const { items, itemCount, subtotal, isOpen, closeCart, updateQuantity, removeItem } = useCart();
@@ -78,19 +78,7 @@ export function CartDrawer() {
                   <div key={key} className="pt-4 first:pt-0 flex gap-4">
                     {/* Thumbnail */}
                     <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-zinc-100 shrink-0 border border-zinc-200/80">
-                      {item.imageUrl ? (
-                        <Image
-                          src={item.imageUrl}
-                          alt={item.title}
-                          fill
-                          sizes="80px"
-                          className="object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-zinc-100 text-zinc-300">
-                          <ShoppingBag className="w-6 h-6" />
-                        </div>
-                      )}
+                      <SafeProductImage src={item.imageUrl} alt={item.title} sizes="80px" fallbackIconClassName="w-6 h-6" />
                     </div>
 
                     {/* Info & Controls */}

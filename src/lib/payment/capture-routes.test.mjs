@@ -26,11 +26,11 @@ class FakeRazorpay {
     this.orders = {
       fetch: async (id) => {
         if (razorpayStatusError) throw razorpayStatusError;
-        return { id, amount: 12500, currency: 'INR' };
+        return { id, amount: 12500, currency: 'INR', ...razorpayOrderOverride };
       },
       fetchPayments: async () => {
         if (razorpayStatusError) throw razorpayStatusError;
-        return { items: [{
+        return { items: razorpayPaymentListOverride || [{
           id: paymentId,
           order_id: razorpayOrderId,
           amount: 12500,
@@ -66,6 +66,8 @@ let gatewayPaymentOverride;
 let authenticatedUserId = userId;
 let paymentAttemptLockReadError;
 let razorpayStatusError;
+let razorpayOrderOverride;
+let razorpayPaymentListOverride;
 
 function setWebhookTestMode() {
   process.env.NODE_ENV = 'test';
@@ -97,7 +99,7 @@ function initialOrder(overrides = {}) {
   };
 }
 
-function createHarness({ order = initialOrder(), activeAttempt = { orderId, userId }, missingActiveAttempt = false, capturePaymentId = paymentId } = {}) {
+function createHarness({ order = initialOrder(), activeAttempt = { orderId, userId }, missingActiveAttempt = false, capturePaymentId = paymentId, orders = [] } = {}) {
   const couponId = order.couponApplied?.couponId;
   const usagePath = couponId ? `couponUserUsage/${getCouponUserUsageKey(couponId, userId)}` : null;
   const records = new Map([
@@ -112,6 +114,7 @@ function createHarness({ order = initialOrder(), activeAttempt = { orderId, user
       }],
     ] : []),
   ]);
+  for (const entry of orders) records.set(`orders/${entry.id}`, structuredClone(entry.order));
   if (missingActiveAttempt) records.delete(`checkoutRequests/_active_razorpay_${userId}`);
   const operations = [];
   let queue = Promise.resolve();
@@ -149,19 +152,24 @@ function createHarness({ order = initialOrder(), activeAttempt = { orderId, user
   mock.method(adminAuth, 'verifySessionCookie', async () => ({ uid: authenticatedUserId, email: 'customer@example.invalid' }));
   mock.method(adminDb, 'collection', (collectionName) => ({
     doc: (id) => ref(`${collectionName}/${id}`),
-    where: (field, _operator, value) => ({
-      limit: () => ({
+    where: (field, _operator, value) => {
+      const query = {
+        limit: () => query,
         get: async () => {
-          if (collectionName !== 'orders' || field !== 'payment.razorpayOrderId' || value !== razorpayOrderId) {
-            return { empty: true, docs: [] };
-          }
-          return {
-            empty: false,
-            docs: [{ ref: ref(`orders/${orderId}`), data: () => structuredClone(records.get(`orders/${orderId}`)) }],
-          };
+          if (collectionName !== 'orders') return { empty: true, docs: [] };
+          const docs = [...records.entries()]
+            .filter(([path, data]) => path.startsWith('orders/') && path.split('/').length === 2 &&
+              field.split('.').reduce((current, key) => current?.[key], data) === value)
+            .map(([path, data]) => ({
+              ref: ref(path),
+              id: path.split('/').at(-1),
+              data: () => structuredClone(data),
+            }));
+          return { empty: docs.length === 0, docs };
         },
-      }),
-    }),
+      };
+      return query;
+    },
   }));
 
   mock.method(adminDb, 'runTransaction', (callback) => {
@@ -178,6 +186,13 @@ function createHarness({ order = initialOrder(), activeAttempt = { orderId, user
           writeStarted = true;
           operations.push({ type: 'update', path: documentRef.path });
           writes.push(() => applyUpdate(documentRef.path, changes));
+        },
+        set: (documentRef, data, options = {}) => {
+          writeStarted = true;
+          operations.push({ type: 'set', path: documentRef.path });
+          writes.push(() => records.set(documentRef.path, options.merge
+            ? { ...(records.get(documentRef.path) || {}), ...structuredClone(data) }
+            : structuredClone(data)));
         },
         delete: (documentRef) => {
           writeStarted = true;
@@ -247,6 +262,8 @@ beforeEach(() => {
   authenticatedUserId = userId;
   paymentAttemptLockReadError = undefined;
   razorpayStatusError = undefined;
+  razorpayOrderOverride = undefined;
+  razorpayPaymentListOverride = undefined;
 });
 
 test('browser recovery reads persisted capture after webhook removed the active lock', async () => {
@@ -387,11 +404,111 @@ test('payment-attempt reconciliation consumes an existing online slot without in
   assert.equal(harness.couponReservation().state, 'consumed');
 });
 
-test('payment attempt treats a missing lock as an ordinary inactive state', async () => {
-  createHarness({ missingActiveAttempt: true });
+test('payment attempt recovers an unresolved customer order when the active lock is missing', async () => {
+  const harness = createHarness({ missingActiveAttempt: true });
+  razorpayOrderOverride = { status: 'attempted', attempts: 1 };
+  razorpayPaymentListOverride = [];
+  const response = await checkPaymentAttempt(orderPaymentStatusRequest());
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.active, true);
+  assert.equal(result.status, 'unknown');
+  assert.equal(result.retryAvailable, false);
+  assert.equal(result.orderId, orderId);
+  assert.equal(harness.attempt().orderId, orderId);
+  assert.equal(harness.order().payment.status, 'pending');
+});
+
+test('payment attempt returns inactive only when no owner-scoped unresolved order exists', async () => {
+  const harness = createHarness({
+    order: initialOrder({
+      orderStatus: 'confirmed',
+      payment: { method: 'razorpay', status: 'captured', razorpayOrderId, razorpayPaymentId: paymentId },
+    }),
+    missingActiveAttempt: true,
+    orders: [{
+      id: 'other-customer-order',
+      order: initialOrder({ customerId: 'customer-other' }),
+    }],
+  });
   const response = await checkPaymentAttempt(orderPaymentStatusRequest());
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { active: false });
+  assert.equal(harness.attempt(), undefined);
+});
+
+test('payment attempt recovers a captured order without its lock and preserves reconciliation state', async () => {
+  const harness = createHarness({ missingActiveAttempt: true });
+  const response = await checkPaymentAttempt(orderPaymentStatusRequest());
+  const result = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(result.active, true);
+  assert.equal(result.status, 'captured');
+  assert.equal(result.orderId, orderId);
+  assert.equal(harness.order().payment.status, 'captured');
+  assert.equal(harness.order().orderStatus, 'confirmed');
+  assert.equal(harness.attempt(), undefined);
+});
+
+test('payment attempt finds a persisted captured reconciliation case after refresh without a lock', async () => {
+  const harness = createHarness({
+    order: initialOrder({
+      orderStatus: 'cancelled',
+      payment: {
+        method: 'razorpay',
+        status: 'captured',
+        razorpayOrderId,
+        razorpayPaymentId: paymentId,
+        reconciliationRequired: true,
+        reconciliationStatus: 'open',
+      },
+    }),
+    missingActiveAttempt: true,
+  });
+  const response = await checkPaymentAttempt(orderPaymentStatusRequest());
+  const result = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(result.active, true);
+  assert.equal(result.status, 'captured');
+  assert.equal(result.orderId, orderId);
+  assert.equal(harness.order().payment.reconciliationRequired, true);
+  assert.equal(harness.order().orderStatus, 'cancelled');
+});
+
+test('payment attempt reports a provider-confirmed failed payment without claiming capture', async () => {
+  const harness = createHarness({ missingActiveAttempt: true });
+  razorpayOrderOverride = { status: 'attempted', attempts: 1 };
+  razorpayPaymentListOverride = [{
+    id: 'pay-failed-local',
+    order_id: razorpayOrderId,
+    amount: 12500,
+    currency: 'INR',
+    status: 'failed',
+  }];
+  const response = await checkPaymentAttempt(orderPaymentStatusRequest());
+  const result = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(result.active, true);
+  assert.equal(result.status, 'failed');
+  assert.equal(harness.order().payment.status, 'pending');
+  assert.equal(harness.attempt().orderId, orderId);
+});
+
+test('concurrent recovery requests converge on one recovered captured order', async () => {
+  const harness = createHarness({ missingActiveAttempt: true });
+  const [first, second] = await Promise.all([
+    checkPaymentAttempt(orderPaymentStatusRequest()),
+    checkPaymentAttempt(orderPaymentStatusRequest()),
+  ]);
+  const firstResult = await first.json();
+  const secondResult = await second.json();
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+  assert.equal(firstResult.status, 'captured', JSON.stringify({ firstResult, secondResult }));
+  assert.equal(secondResult.status, 'captured', JSON.stringify({ firstResult, secondResult }));
+  assert.equal(harness.order().payment.status, 'captured');
+  assert.equal(harness.order().statusTimeline.length, 1);
+  assert.equal(harness.attempt(), undefined);
 });
 
 test('payment attempt returns a safe correlated 503 and redacted Firestore category', async () => {

@@ -6,8 +6,7 @@ import { ChevronRight, Layers } from 'lucide-react';
 import { Container } from '@/components/ui/Container';
 import { ProductCard } from '@/components/product/ProductCard';
 import { CategorySortSelect } from '@/components/product/CategorySortSelect';
-import { getCategoryBySlug } from '@/lib/firebase/firestore';
-import { getPublicProductPage } from '@/lib/firebase/server-catalog';
+import { getPublicCategoryBySlug, getPublicProductPage } from '@/lib/firebase/server-catalog';
 import type { Product, Category } from '@/types';
 
 interface PageProps {
@@ -19,7 +18,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { slug } = await params;
   let category: Category | null = null;
   try {
-    category = await getCategoryBySlug(slug);
+    category = await getPublicCategoryBySlug(slug);
   } catch {
     // fallback
   }
@@ -87,7 +86,7 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
 
   let category: Category | null = null;
   try {
-    category = await getCategoryBySlug(slug);
+    category = await getPublicCategoryBySlug(slug);
   } catch {
     // Firestore unavailable during build
   }

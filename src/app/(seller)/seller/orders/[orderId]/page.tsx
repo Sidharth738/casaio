@@ -2,13 +2,11 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import {
   ArrowLeft,
   Truck,
   MapPin,
-  ShoppingBag,
   Check,
   AlertCircle,
   CheckCircle2,
@@ -22,6 +20,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { SafeProductImage } from '@/components/product/SafeProductImage';
 
 export default function SellerOrderDetailPage() {
   const params = useParams();
@@ -214,19 +213,7 @@ export default function SellerOrderDetailPage() {
               {sellerItems.map((item, idx) => (
                 <div key={idx} className="py-4 first:pt-0 last:pb-0 flex items-center gap-4">
                   <div className="relative w-14 h-14 rounded-lg bg-zinc-100 overflow-hidden shrink-0 border border-zinc-200">
-                    {typeof item.imageUrl === 'string' && item.imageUrl.trim() ? (
-                      <Image
-                        src={item.imageUrl.trim()}
-                        alt={item.title}
-                        fill
-                        sizes="56px"
-                        className="object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-zinc-300">
-                        <ShoppingBag className="w-4 h-4" />
-                      </div>
-                    )}
+                    <SafeProductImage src={item.imageUrl} alt={item.title} sizes="56px" />
                   </div>
 
                   <div className="flex-1 min-w-0">

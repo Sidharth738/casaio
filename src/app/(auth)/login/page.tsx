@@ -8,6 +8,8 @@ import { getRoleHome, getSafeRedirect } from '@/lib/auth/redirect';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Mail, Lock, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
+import { isFirebaseEmulatorMode } from '@/lib/firebase/client';
+import { getVerificationActionLabel, getVerificationDeliveryMessage, getVerificationPendingInstructions, type VerificationDelivery } from '@/lib/auth/verification-delivery';
 
 function LoginForm() {
   const router = useRouter();
@@ -54,7 +56,8 @@ function LoginForm() {
       } else if (code === 'auth/email-not-verified') {
         setError((err as Error).message);
         setNeedsVerification(true);
-        setResendCooldown((err as { verificationEmailSent?: boolean }).verificationEmailSent ? 60 : 0);
+        const delivery = (err as { verificationDelivery?: VerificationDelivery }).verificationDelivery;
+        setResendCooldown(delivery && delivery !== 'failed' ? 60 : 0);
       } else if (code === 'auth/profile-initialization-failed' || code === 'auth/session-creation-failed') {
         setError((err as Error).message);
       } else {
@@ -78,8 +81,8 @@ function LoginForm() {
     setIsResending(true);
     setResendMessage(null);
     try {
-      await resendVerificationEmail(email, password);
-      setResendMessage('A new verification link has been sent. Check your inbox and spam folder.');
+      const delivery = await resendVerificationEmail(email, password);
+      setResendMessage(getVerificationDeliveryMessage(delivery));
       setResendCooldown(60);
     } catch (cause: unknown) {
       const code = (cause as { code?: string })?.code;
@@ -91,7 +94,7 @@ function LoginForm() {
       } else if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
         setResendMessage('We could not verify those sign-in details. Check your email and password, then try again.');
       } else {
-        setResendMessage('We could not send a verification link right now. Please try again shortly.');
+        setResendMessage(getVerificationDeliveryMessage('failed'));
       }
     } finally {
       setIsResending(false);
@@ -138,14 +141,14 @@ function LoginForm() {
 
       {needsVerification && (
         <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 p-3.5 text-sm text-amber-950" aria-live="polite">
-          <p>Open the verification email before signing in. If you need another link, we can send one to this account.</p>
+          <p>{getVerificationPendingInstructions(isFirebaseEmulatorMode)}</p>
           <button
             type="button"
             onClick={handleResendVerification}
             disabled={isResending || resendCooldown > 0 || !email || !password}
             className="min-h-10 rounded px-1 font-semibold text-orange-800 underline decoration-orange-300 underline-offset-4 hover:text-orange-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-600 disabled:opacity-50"
           >
-            {isResending ? 'Sending verification email…' : resendCooldown > 0 ? `Try again in ${resendCooldown}s` : 'Resend verification email'}
+            {isResending ? (isFirebaseEmulatorMode ? 'Creating verification link…' : 'Sending verification email…') : resendCooldown > 0 ? `Try again in ${resendCooldown}s` : getVerificationActionLabel(isFirebaseEmulatorMode)}
           </button>
           {resendMessage && <p className="text-xs leading-5" role="status">{resendMessage}</p>}
         </div>

@@ -33,6 +33,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { formatCurrency } from '@/lib/utils';
 import { calculateAuthoritativePricing } from '@/lib/orders/checkout-validation';
+import { getSafeProductImageSource } from '@/lib/products/image-source';
+import { classifyPaymentAttemptRefresh, resolveInactiveAttemptRefresh } from '@/lib/payment/payment-attempt-refresh';
 
 interface RazorpayInstance {
   open: () => void;
@@ -45,6 +47,30 @@ class PaymentRequestTimeoutError extends Error {
     super('Payment status request timed out');
     this.name = 'PaymentRequestTimeoutError';
   }
+}
+
+function CheckoutItemThumbnail({ imageUrl, title }: { imageUrl: unknown; title: string }) {
+  const [failed, setFailed] = useState(false);
+  const imageSource = getSafeProductImageSource(imageUrl);
+
+  if (!imageSource || failed) {
+    return (
+      <div className="w-full h-full flex items-center justify-center text-zinc-300" aria-label={`${title} image unavailable`}>
+        <ShoppingBag className="w-4 h-4" aria-hidden="true" />
+      </div>
+    );
+  }
+
+  return (
+    <Image
+      src={imageSource}
+      alt={title}
+      fill
+      sizes="48px"
+      className="object-cover"
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 async function fetchPaymentRequest(input: RequestInfo | URL, init: RequestInit = {}) {
@@ -167,18 +193,25 @@ export default function CheckoutPage() {
     if (!silent) setAttemptLoading(true);
     try {
       const response = await fetchPaymentRequest('/api/payment/attempt', { cache: 'no-store' });
-      const data = await response.json();
-      if (!response.ok || !data || typeof data.active !== 'boolean') {
+      const data = await response.json().catch(() => null);
+      const refreshResult = classifyPaymentAttemptRefresh(response.ok, response.status, data);
+      if (refreshResult.kind === 'unavailable') {
         setPaymentNeedsReview(true);
         setCheckoutError('Payment status could not be checked. Do not pay again until the status is confirmed.');
         return;
       }
 
-      if (!data.active) {
+      if (refreshResult.kind === 'inactive') {
         const knownOrderId = activePaymentAttempt?.orderId;
         if (knownOrderId) {
           const recoveredState = await recoverPersistedOrder(knownOrderId);
-          if (recoveredState) return;
+          const recoveryResult = resolveInactiveAttemptRefresh(knownOrderId, recoveredState);
+          if (recoveryResult === 'recovered') return;
+          if (recoveryResult === 'unavailable') {
+            setPaymentNeedsReview(true);
+            setCheckoutError('Payment status could not be checked. Do not pay again until the status is confirmed.');
+            return;
+          }
         }
         setActivePaymentAttempt(null);
         setPaymentNeedsReview(false);
@@ -190,22 +223,15 @@ export default function CheckoutPage() {
         return;
       }
 
-      if (data.status === 'captured' && typeof data.orderId === 'string') {
-        const recoveredState = await recoverPersistedOrder(data.orderId);
+      if (refreshResult.kind === 'captured') {
+        const recoveredState = await recoverPersistedOrder(refreshResult.orderId);
         if (recoveredState) return;
         setPaymentNeedsReview(true);
         setCheckoutError('Payment was captured, but the saved order status could not be checked. Do not pay again.');
         return;
       }
 
-      const attempt: ActivePaymentAttempt = {
-        orderId: data.orderId,
-        orderNumber: data.orderNumber,
-        status: data.status === 'authorized' || data.status === 'failed' || data.status === 'pending'
-          ? data.status
-          : 'unknown',
-        retryAvailable: data.retryAvailable === true,
-      };
+      const attempt: ActivePaymentAttempt = refreshResult.attempt;
       setActivePaymentAttempt(attempt);
       setPaymentMethod('razorpay');
       setPaymentNeedsReview(!attempt.retryAvailable);
@@ -973,19 +999,7 @@ export default function CheckoutPage() {
                       className="pt-3.5 first:pt-0 flex items-center gap-3"
                     >
                       <div className="relative w-12 h-12 rounded-lg bg-zinc-100 overflow-hidden shrink-0 border border-zinc-200">
-                        {item.imageUrl ? (
-                          <Image
-                            src={item.imageUrl}
-                            alt={item.title}
-                            fill
-                            sizes="48px"
-                            className="object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-zinc-300">
-                            <ShoppingBag className="w-4 h-4" />
-                          </div>
-                        )}
+                        <CheckoutItemThumbnail imageUrl={item.imageUrl} title={item.title} />
                         <span className="absolute bottom-0 right-0 bg-zinc-900 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-tl">
                           {item.quantity}
                         </span>

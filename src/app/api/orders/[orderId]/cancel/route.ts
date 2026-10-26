@@ -6,11 +6,236 @@ import type { OrderItem } from '@/types';
 import { getActivePaymentAttemptRef, getCheckoutCoordinationRef } from '@/lib/payment/attempts';
 import { getRazorpayConfiguration } from '@/lib/payment/razorpay-config';
 import { RazorpayConfigurationError } from '@/lib/payment/razorpay-config-core';
-import { rupeesToPaise } from '@/lib/orders/money';
 import { buildCancellationInventoryUpdates } from '@/lib/orders/cancellation-inventory';
 import { getCouponUserUsageRefs } from '@/lib/coupons/user-usage';
+import {
+  markRefundReconciliationRequired,
+  reserveCancellationRefundAttempt,
+  transitionRefundAttempt,
+  type VerifiedRefundEvidence,
+} from '@/lib/payment/refund-attempts';
 
-const CANCELLABLE_STATUSES = ['pending', 'confirmed', 'processing'];
+const CANCELLABLE_STATUSES = ['pending', 'confirmed'];
+
+type ProviderRefund = {
+  id?: unknown;
+  payment_id?: unknown;
+  amount?: unknown;
+  currency?: unknown;
+  status?: unknown;
+  receipt?: unknown;
+  notes?: { orderId?: unknown };
+};
+
+function providerEvidence(refund: ProviderRefund): VerifiedRefundEvidence | null {
+  if (typeof refund.id !== 'string' || typeof refund.payment_id !== 'string' ||
+      !Number.isSafeInteger(refund.amount) || typeof refund.currency !== 'string' ||
+      !['pending', 'processed', 'failed'].includes(String(refund.status))) return null;
+  return {
+    refundId: refund.id,
+    paymentId: refund.payment_id,
+    amount: refund.amount as number,
+    currency: refund.currency,
+    status: refund.status as VerifiedRefundEvidence['status'],
+    ...(typeof refund.receipt === 'string' ? { receipt: refund.receipt } : {}),
+    ...(typeof refund.notes?.orderId === 'string' ? { orderNote: refund.notes.orderId } : {}),
+  };
+}
+
+function refundResponse(kind: string) {
+  if (kind === 'succeeded' || kind === 'already_applied') {
+    return NextResponse.json({ success: true, message: 'Order cancelled and refund confirmed.', paymentStatus: 'refunded' });
+  }
+  if (kind === 'failed') {
+    return NextResponse.json({ error: 'Razorpay confirmed that the refund failed. The order remains active; contact support.' }, { status: 409 });
+  }
+  if (kind === 'reconciliation_required') {
+    return NextResponse.json({
+      success: false,
+      reconciliationRequired: true,
+      message: 'Your refund outcome needs review. Do not submit another payment or refund request.',
+      paymentStatus: 'captured',
+    }, { status: 202, headers: { 'Cache-Control': 'no-store' } });
+  }
+  return NextResponse.json({
+    success: true,
+    reconciliationRequired: kind === 'submission_unknown',
+    message: kind === 'submission_unknown'
+      ? 'Your refund is being checked. Bank and payment-method processing times vary.'
+      : 'Your refund is processing. Bank and payment-method processing times vary.',
+    paymentStatus: 'refund_pending',
+  }, { status: 202, headers: { 'Cache-Control': 'no-store' } });
+}
+
+async function fetchAllRefunds(razorpay: Razorpay, paymentId: string) {
+  const refunds: ProviderRefund[] = [];
+  const seenIds = new Set<string>();
+  let skip = 0;
+  for (let page = 0; page < 100; page++) {
+    const response = await razorpay.payments.fetchMultipleRefund(paymentId, { count: 100, skip });
+    if (!Array.isArray(response.items)) throw new Error('Invalid refund list');
+    for (const refund of response.items as ProviderRefund[]) {
+      if (typeof refund.id === 'string') {
+        if (seenIds.has(refund.id)) throw new Error('Repeated refund page');
+        seenIds.add(refund.id);
+      }
+      refunds.push(refund);
+    }
+    if (response.items.length < 100) return refunds;
+    skip += response.items.length;
+  }
+  throw new Error('Refund list exceeded the safe pagination limit');
+}
+
+async function processOnlineCancellation(orderId: string, customerId: string) {
+  const orderRef = adminDb.collection('orders').doc(orderId);
+  const preview = await orderRef.get();
+  if (!preview.exists || preview.data()?.customerId !== customerId) {
+    return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  }
+  const previewPayment = preview.data()?.payment;
+  if (previewPayment?.method !== 'razorpay') return null;
+
+  let configuration;
+  try {
+    configuration = getRazorpayConfiguration();
+  } catch (error: unknown) {
+    if (error instanceof RazorpayConfigurationError) {
+      return NextResponse.json({ error: 'Payment configuration is invalid' }, { status: 503 });
+    }
+    throw error;
+  }
+  if (configuration.mode === 'simulation' || previewPayment.razorpayPaymentId?.startsWith('pay_sim_')) {
+    return NextResponse.json({ error: 'Simulated payments cannot be refunded through Razorpay.' }, { status: 409 });
+  }
+
+  const reservation = await reserveCancellationRefundAttempt(orderId, customerId);
+  if (reservation.kind === 'not_found') return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+  if (reservation.kind === 'invalid_amount') return NextResponse.json({ error: 'Order amount requires support review.' }, { status: 409 });
+  if (reservation.kind === 'ineligible') return NextResponse.json({ error: 'This order is not eligible for cancellation.' }, { status: 409 });
+  if (reservation.kind === 'inconsistent' || reservation.kind === 'invalid_request') {
+    return NextResponse.json({ error: 'Cancellation requires support review.' }, { status: 409 });
+  }
+  let attempt = reservation.attempt;
+  if (attempt.state === 'succeeded') return refundResponse('succeeded');
+  if (attempt.state === 'failed') return refundResponse('failed');
+  if (attempt.state === 'provider_identified') {
+    const current = (await orderRef.get()).data();
+    const storedPayment = current?.payment;
+    if (current?.orderStatus === 'cancelled' && current.cancellationStatus === 'completed' &&
+        storedPayment?.status === 'refunded' && storedPayment.razorpayRefundId === attempt.providerRefundId) {
+      const synchronized = await transitionRefundAttempt(orderId, attempt.id, 'succeeded', {
+        paymentId: attempt.paymentId, amount: attempt.amount, currency: attempt.currency,
+        refundId: attempt.providerRefundId!, status: 'processed',
+      });
+      return refundResponse(synchronized.kind === 'transitioned' || synchronized.kind === 'already_applied'
+        ? 'succeeded'
+        : 'reconciliation_required');
+    }
+    if (storedPayment?.status === 'refund_failed' && storedPayment.razorpayRefundId === attempt.providerRefundId) {
+      const synchronized = await transitionRefundAttempt(orderId, attempt.id, 'failed', {
+        paymentId: attempt.paymentId, amount: attempt.amount, currency: attempt.currency,
+        refundId: attempt.providerRefundId!, status: 'failed',
+      });
+      return refundResponse(synchronized.kind === 'transitioned' || synchronized.kind === 'already_applied'
+        ? 'failed'
+        : 'reconciliation_required');
+    }
+    return refundResponse('provider_identified');
+  }
+
+  const razorpay = new Razorpay({ key_id: configuration.keyId, key_secret: configuration.keySecret });
+  try {
+    let payment;
+    let existingRefunds: ProviderRefund[];
+    try {
+      payment = await razorpay.payments.fetch(attempt.paymentId);
+      existingRefunds = await fetchAllRefunds(razorpay, attempt.paymentId);
+    } catch {
+      return NextResponse.json({
+        error: 'Refund status could not be checked. The cancellation remains pending; contact support before retrying.',
+      }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
+    }
+    const amountRefunded = payment.amount_refunded;
+    if (payment.id !== attempt.paymentId || payment.status !== 'captured' ||
+        payment.amount !== attempt.amount || payment.currency !== attempt.currency ||
+        !Number.isSafeInteger(amountRefunded) || (amountRefunded as number) > attempt.amount) {
+      await markRefundReconciliationRequired(orderId, attempt.id, 'refund_balance_uncertain');
+      return refundResponse('reconciliation_required');
+    }
+
+    const matching = existingRefunds.filter((refund) => refund.receipt === attempt.requestBody.receipt);
+    const otherNonFailed = existingRefunds.filter((refund) => refund.receipt !== attempt.requestBody.receipt && refund.status !== 'failed');
+    if (otherNonFailed.length > 0 || ((amountRefunded as number) > 0 && matching.length === 0)) {
+      await markRefundReconciliationRequired(orderId, attempt.id, 'refund_balance_uncertain');
+      return refundResponse('reconciliation_required');
+    }
+    if (matching.length > 1) {
+      await markRefundReconciliationRequired(orderId, attempt.id, 'refund_balance_uncertain');
+      return refundResponse('reconciliation_required');
+    }
+    if (matching.length === 1) {
+      const evidence = providerEvidence(matching[0]);
+      if (!evidence || evidence.paymentId !== attempt.paymentId || evidence.amount !== attempt.amount ||
+          evidence.currency !== attempt.currency || evidence.receipt !== attempt.requestBody.receipt ||
+          (evidence.status === 'processed' && amountRefunded !== attempt.amount) ||
+          (evidence.status === 'failed' && amountRefunded !== 0)) {
+        await markRefundReconciliationRequired(orderId, attempt.id, 'refund_provider_data_invalid');
+        return refundResponse('reconciliation_required');
+      }
+      if (attempt.state === 'not_submitted') {
+        const started = await transitionRefundAttempt(orderId, attempt.id, 'submission_unknown');
+        if (started.kind !== 'transitioned' && started.kind !== 'already_applied') return refundResponse('reconciliation_required');
+        attempt = started.attempt;
+      }
+      const state = evidence.status === 'pending' ? 'provider_identified' : evidence.status === 'processed' ? 'succeeded' : 'failed';
+      const applied = await transitionRefundAttempt(orderId, attempt.id, state, evidence);
+      return refundResponse(applied.kind === 'transitioned' || applied.kind === 'already_applied'
+        ? applied.attempt.state
+        : 'reconciliation_required');
+    }
+    if (amountRefunded !== 0 || existingRefunds.some((refund) => refund.status !== 'failed')) {
+      await markRefundReconciliationRequired(orderId, attempt.id, 'refund_balance_uncertain');
+      return refundResponse('reconciliation_required');
+    }
+
+    if (attempt.state === 'not_submitted') {
+      const started = await transitionRefundAttempt(orderId, attempt.id, 'submission_unknown');
+      if (started.kind !== 'transitioned' && started.kind !== 'already_applied') return refundResponse('reconciliation_required');
+      attempt = started.attempt;
+    }
+
+    // Razorpay SDK 2.9.8 drops custom headers in payments.refund(). Its installed
+    // Axios adapter preserves auth/base URL and supports per-request headers.
+    const rawApi = razorpay.api as unknown as {
+      rq: { post: (url: string, body: string, options: { headers: Record<string, string> }) => Promise<{ data: ProviderRefund }> };
+    };
+    let response: { data: ProviderRefund };
+    try {
+      response = await rawApi.rq.post(
+        `/v1/payments/${encodeURIComponent(attempt.paymentId)}/refund`,
+        attempt.requestBodyJson,
+        { headers: { 'Content-Type': 'application/json', 'X-Refund-Idempotency': attempt.idempotencyKey } },
+      );
+    } catch {
+      await markRefundReconciliationRequired(orderId, attempt.id, 'refund_submission_unknown');
+      return refundResponse('submission_unknown');
+    }
+    const evidence = providerEvidence(response.data);
+    if (!evidence || evidence.paymentId !== attempt.paymentId || evidence.amount !== attempt.amount ||
+        evidence.currency !== attempt.currency) {
+      await markRefundReconciliationRequired(orderId, attempt.id, 'refund_provider_data_invalid');
+      return refundResponse('reconciliation_required');
+    }
+    const state = evidence.status === 'pending' ? 'provider_identified' : evidence.status === 'processed' ? 'succeeded' : 'failed';
+    const applied = await transitionRefundAttempt(orderId, attempt.id, state, evidence);
+    return refundResponse(applied.kind === 'transitioned' || applied.kind === 'already_applied'
+      ? applied.attempt.state
+      : 'reconciliation_required');
+  } catch {
+    return NextResponse.json({ error: 'Refund reconciliation could not be completed. Contact support.' }, { status: 503 });
+  }
+}
 
 export async function POST(
   request: NextRequest,
@@ -21,6 +246,8 @@ export async function POST(
     if (!user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
 
     const { orderId } = await params;
+    const onlineResult = await processOnlineCancellation(orderId, user.uid);
+    if (onlineResult) return onlineResult;
     const orderRef = adminDb.collection('orders').doc(orderId);
     const reservation = await adminDb.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(orderRef);
@@ -61,49 +288,6 @@ export async function POST(
       return NextResponse.json({ success: true, message: 'Order is already cancelled' });
     }
 
-    const { order, isCod } = reservation;
-    let refund: { id: string; status: string } | null = null;
-
-    if (!isCod) {
-      let configuration;
-      try {
-        configuration = getRazorpayConfiguration();
-      } catch (error: unknown) {
-        if (!(error instanceof RazorpayConfigurationError)) throw error;
-        await orderRef.update({ cancellationStatus: 'failed', updatedAt: new Date().toISOString() });
-        return NextResponse.json({ error: 'Payment configuration is invalid' }, { status: 503 });
-      }
-      if (configuration.mode === 'simulation' || order.payment.razorpayPaymentId?.startsWith('pay_sim_')) {
-        await orderRef.update({ cancellationStatus: 'failed', updatedAt: new Date().toISOString() });
-        return NextResponse.json({ error: 'Simulated payments cannot be refunded through Razorpay.' }, { status: 409 });
-      }
-
-      const razorpay = new Razorpay({ key_id: configuration.keyId, key_secret: configuration.keySecret });
-      const paymentId = order.payment.razorpayPaymentId as string;
-      const receipt = `cancel_${orderId}`;
-      try {
-        const existingRefunds = await razorpay.payments.fetchMultipleRefund(paymentId, { count: 100 });
-        const existingRefund = existingRefunds.items.find((item) => item.receipt === receipt && item.status !== 'failed');
-        refund = existingRefund
-          ? { id: existingRefund.id, status: existingRefund.status }
-          : await razorpay.payments.refund(paymentId, {
-              amount: rupeesToPaise(Number(order.pricing?.totalAmount || 0)),
-              speed: 'normal',
-              receipt,
-              notes: { orderId, customerId: user.uid, reason: 'Customer cancellation' },
-            });
-      } catch {
-        console.error('Order cancellation refund failed');
-        await adminDb.runTransaction(async (transaction) => {
-          const snapshot = await transaction.get(orderRef);
-          if (snapshot.exists && snapshot.data()?.cancellationStatus === 'processing') {
-            transaction.update(orderRef, { cancellationStatus: 'failed', updatedAt: new Date().toISOString() });
-          }
-        });
-        return NextResponse.json({ error: 'We could not start the refund, so the order was not cancelled. Please try again or contact support.' }, { status: 502 });
-      }
-    }
-
     const now = new Date().toISOString();
     try {
       const completion = await adminDb.runTransaction(async (transaction) => {
@@ -111,10 +295,6 @@ export async function POST(
         if (!snapshot.exists) throw new Error('Order not found while completing cancellation');
         const current = snapshot.data()!;
         if (current.cancellationStatus !== 'processing') {
-          if (current.orderStatus === 'cancelled' && current.cancellationStatus === 'completed' &&
-              refund && current.payment?.status === 'refunded' && current.payment?.razorpayRefundId === refund.id) {
-            return { failed: false as const, pending: false as const, paymentStatus: 'refunded' };
-          }
           throw new Error('Order cancellation state changed');
         }
 
@@ -147,39 +327,6 @@ export async function POST(
           }
         }
 
-        let paymentStatus: string | undefined;
-        if (refund) {
-          if (current.payment?.method !== 'razorpay' ||
-              current.payment?.razorpayPaymentId !== order.payment.razorpayPaymentId ||
-              (current.payment?.razorpayRefundId && current.payment.razorpayRefundId !== refund.id)) {
-            throw new Error('Refund does not match the active order payment');
-          }
-          // A webhook may have completed or failed the same refund while the
-          // provider response was in flight. Never replace that terminal state
-          // with a stale response from the cancellation request.
-          if (current.payment?.status === 'refunded') paymentStatus = 'refunded';
-          else if (current.payment?.status === 'refund_failed' || refund.status === 'failed') {
-            transaction.update(orderRef, {
-              cancellationStatus: 'failed',
-              'payment.razorpayRefundId': refund.id,
-              ...(current.payment?.status !== 'refund_failed' ? { 'payment.status': 'refund_failed' } : {}),
-              updatedAt: now,
-            });
-            return { failed: true as const };
-          } else {
-            paymentStatus = refund.status === 'processed' ? 'refunded' : 'refund_pending';
-          }
-
-          if (paymentStatus === 'refund_pending') {
-            transaction.update(orderRef, {
-              'payment.status': 'refund_pending',
-              'payment.razorpayRefundId': refund.id,
-              updatedAt: now,
-            });
-            return { failed: false as const, pending: true as const, paymentStatus };
-          }
-        }
-
         const items = current.items as OrderItem[];
         const productRefs = Array.from(new Set(items.map((item) => item.productId)))
           .map((productId) => adminDb.collection('products').doc(productId));
@@ -195,18 +342,6 @@ export async function POST(
         }
         const inventoryRestoration = buildCancellationInventoryUpdates(items, productData, now);
         if (!inventoryRestoration.ok) {
-          if (refund && paymentStatus === 'refunded') {
-            transaction.update(orderRef, {
-              cancellationStatus: 'failed',
-              'payment.status': 'refunded',
-              'payment.razorpayRefundId': refund.id,
-              'payment.reconciliationRequired': true,
-              'payment.reconciliationStatus': 'open',
-              'payment.reconciliationReason': 'cancellation_inventory_restore_failed',
-              updatedAt: now,
-            });
-            return { failed: true as const, pending: false as const, inventoryConflict: true as const };
-          }
           throw new Error(inventoryRestoration.error);
         }
         for (const [productId, updates] of inventoryRestoration.updates) {
@@ -217,18 +352,12 @@ export async function POST(
           orderStatus: 'cancelled',
           items: items.map((item) => ({ ...item, fulfillmentStatus: 'cancelled' })),
           cancellationStatus: 'completed',
-          ...(refund ? {
-            'payment.status': paymentStatus!,
-            'payment.razorpayRefundId': refund.id,
-          } : {}),
           statusTimeline: [
             ...(current.statusTimeline || []),
             {
               status: 'cancelled',
               timestamp: now,
-              note: refund && paymentStatus !== 'refunded'
-                ? 'Order cancelled. Your Razorpay refund is being processed.'
-                : 'Order cancelled by the customer.',
+              note: 'Order cancelled by the customer.',
               updatedBy: user.uid,
             },
           ],
@@ -244,28 +373,15 @@ export async function POST(
         if (activeAttemptSnap.data()?.orderId === orderId) transaction.delete(activeAttemptRef);
         const checkoutCoordinationRef = getCheckoutCoordinationRef(user.uid);
         if (checkoutCoordinationSnap.data()?.orderId === orderId) transaction.delete(checkoutCoordinationRef);
-        return { failed: false as const, pending: false as const, paymentStatus };
+        return { failed: false as const, pending: false as const };
       });
       if (completion.failed) {
-        if ('inventoryConflict' in completion && completion.inventoryConflict) {
-          return NextResponse.json({ error: 'Refund completed, but inventory restoration needs support review.' }, { status: 409 });
-        }
-        return NextResponse.json({ error: 'Refund could not be started, so the order was not cancelled. Please contact support.' }, { status: 502 });
+        return NextResponse.json({ error: 'Order cancellation could not be completed.' }, { status: 409 });
       }
-      if (completion.pending) {
-        return NextResponse.json({
-          success: true,
-          message: 'Your refund is processing. The order will be cancelled after Razorpay confirms it.',
-          paymentStatus: 'refund_pending',
-        }, { status: 202 });
-      }
-      const paymentStatus = completion.paymentStatus;
       return NextResponse.json({
         success: true,
-        message: refund && paymentStatus !== 'refunded'
-          ? 'Order cancelled. Your refund is being processed.'
-          : 'Order cancelled successfully.',
-        paymentStatus: refund ? paymentStatus : 'pending',
+        message: 'Order cancelled successfully.',
+        paymentStatus: 'pending',
       });
     } catch (error) {
       // If Razorpay accepted a refund but Firestore completion failed, allow a retry.

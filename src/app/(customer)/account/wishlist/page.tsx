@@ -2,13 +2,13 @@
 
 import React from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { Heart, ShoppingBag, Trash2, ArrowRight } from 'lucide-react';
 import { useWishlist } from '@/hooks/useWishlist';
 import { useCart } from '@/hooks/useCart';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency } from '@/lib/utils';
+import { SafeProductImage } from '@/components/product/SafeProductImage';
 
 export default function WishlistPage() {
   const { items, itemCount, removeItem, clearWishlist } = useWishlist();
@@ -79,19 +79,13 @@ export default function WishlistPage() {
             >
               {/* Image */}
               <div className="relative aspect-4/3 overflow-hidden bg-zinc-100">
-                {item.imageUrl ? (
-                  <Image
-                    src={item.imageUrl}
-                    alt={item.title}
-                    fill
-                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-                    className="object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-zinc-300">
-                    <ShoppingBag className="w-8 h-8" />
-                  </div>
-                )}
+                <SafeProductImage
+                  src={item.imageUrl}
+                  alt={item.title}
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                  className="object-cover transition-transform duration-500 group-hover:scale-105"
+                  fallbackIconClassName="h-8 w-8"
+                />
 
                 {/* Remove button overlay */}
                 <button

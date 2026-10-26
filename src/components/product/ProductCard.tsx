@@ -6,8 +6,10 @@ import { Heart, ShoppingBag, Star } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency } from '@/lib/utils';
 import { useWishlist } from '@/hooks/useWishlist';
+import { useState } from 'react';
 import type { Product } from '@/types';
 import { cn } from '@/lib/utils';
+import { getSafeProductImageSource } from '@/lib/products/image-source';
 
 interface ProductCardProps {
   product: Product;
@@ -15,10 +17,13 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, className }: ProductCardProps) {
+  const [imageFailed, setImageFailed] = useState(false);
   const { isInWishlist, toggleWishlist } = useWishlist();
   const isWishlisted = isInWishlist(product.id);
 
-  const primaryImage = product.images.find((img) => img.isPrimary) ?? product.images[0];
+  const productImages = Array.isArray(product.images) ? product.images : [];
+  const primaryImage = productImages.find((img) => img?.isPrimary) ?? productImages[0];
+  const imageSource = getSafeProductImageSource(primaryImage?.url);
   const discount =
     product.compareAtPrice && product.compareAtPrice > product.price
       ? Math.round(((product.compareAtPrice - product.price) / product.compareAtPrice) * 100)
@@ -47,20 +52,22 @@ export function ProductCard({ product, className }: ProductCardProps) {
       {/* Image */}
       <div className="relative aspect-4/3 overflow-hidden bg-zinc-100 shrink-0">
         <Link href={`/products/${product.slug}`} className="relative block w-full h-full">
-          {primaryImage ? (
+          {primaryImage && imageSource && !imageFailed ? (
             <Image
-              src={primaryImage.url}
+              src={imageSource}
               alt={primaryImage.altText ?? product.title}
               fill
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
+              onError={() => setImageFailed(true)}
               className={cn(
                 'object-cover transition-transform duration-500 group-hover:scale-105',
                 isOutOfStock && 'opacity-60'
               )}
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-zinc-100">
+            <div className="w-full h-full flex flex-col gap-2 items-center justify-center bg-zinc-100 text-zinc-300">
               <ShoppingBag className="w-10 h-10 text-zinc-300" />
+              <span className="text-xs text-zinc-400">Image unavailable</span>
             </div>
           )}
         </Link>

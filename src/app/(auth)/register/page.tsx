@@ -8,6 +8,7 @@ import { getRoleHome, getSafeRedirect } from '@/lib/auth/redirect';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Mail, Lock, User, Eye, EyeOff, AlertCircle, Loader2 } from 'lucide-react';
+import { getVerificationDeliveryMessage, type VerificationDelivery } from '@/lib/auth/verification-delivery';
 
 function RegisterForm() {
   const router = useRouter();
@@ -27,7 +28,7 @@ function RegisterForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
-  const [verificationEmailSent, setVerificationEmailSent] = useState(true);
+  const [verificationDelivery, setVerificationDelivery] = useState<VerificationDelivery | null>(null);
   const [profileSaved, setProfileSaved] = useState(true);
 
   const handleRegister = async (e: React.FormEvent) => {
@@ -54,7 +55,7 @@ function RegisterForm() {
     try {
       const result = await registerWithEmail(email, password, displayName);
       setVerificationEmail(email);
-      setVerificationEmailSent(result.verificationEmailSent);
+      setVerificationDelivery(result.verificationDelivery);
       setProfileSaved(result.profileSaved);
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
@@ -105,14 +106,16 @@ function RegisterForm() {
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
           <h3 className="font-semibold">Account created</h3>
           <p className="mt-1">
-            {verificationEmailSent ? (
-              <>We sent a verification link to <strong>{verificationEmail}</strong>. Open it to verify your address, then sign in. Check your spam folder if it isn&apos;t in your inbox.</>
+            {verificationDelivery === 'email' ? (
+              <>We created an account for <strong>{verificationEmail}</strong>. {getVerificationDeliveryMessage('email')} Open it to verify your address, then sign in.</>
+            ) : verificationDelivery === 'emulator' ? (
+              <>We created an account for <strong>{verificationEmail}</strong>. {getVerificationDeliveryMessage('emulator')}</>
             ) : (
-              <>Your account was created, but we couldn&apos;t send the verification email. Continue to sign in and request another link.</>
+              <>Your account was created, but we could not create a verification link. Continue to sign in and request another link.</>
             )}
           </p>
-          {verificationEmailSent && (
-            <p className="mt-2 text-xs">Didn&apos;t receive it? On the sign-in page, enter your email and password to request another verification link.</p>
+          {verificationDelivery && verificationDelivery !== 'failed' && (
+            <p className="mt-2 text-xs">{verificationDelivery === 'emulator' ? 'Need a fresh local link? On the sign-in page, enter your email and password to create another one.' : 'Didn&apos;t receive it? On the sign-in page, enter your email and password to request another verification link.'}</p>
           )}
           {!profileSaved && (
             <p className="mt-2">Your account was created, but we couldn&apos;t save your name. You can update it after signing in.</p>

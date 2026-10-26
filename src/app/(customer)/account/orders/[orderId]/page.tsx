@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -19,6 +18,9 @@ import { getOrderById } from '@/lib/firebase/firestore';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { getRefundDisplay } from '@/lib/orders/refund-display';
+import { isCustomerCancellationEligible } from '@/lib/orders/cancellation-eligibility';
+import { SafeProductImage } from '@/components/product/SafeProductImage';
 
 export default function OrderDetailPage() {
   const params = useParams();
@@ -29,6 +31,9 @@ export default function OrderDetailPage() {
   const [cancelling, setCancelling] = useState(false);
   const [cancellationMessage, setCancellationMessage] = useState<string | null>(null);
   const [cancellationError, setCancellationError] = useState<string | null>(null);
+  const paymentDisplay = order
+    ? getRefundDisplay(order.payment.status, order.payment.razorpayRefundId)
+    : null;
 
   useEffect(() => {
     async function fetchOrder() {
@@ -47,14 +52,7 @@ export default function OrderDetailPage() {
     fetchOrder();
   }, [orderId]);
 
-  const canCancel = Boolean(
-    order &&
-    ['pending', 'confirmed', 'processing'].includes(order.orderStatus) &&
-    order.items.length > 0 &&
-    order.items.every((item) => item.fulfillmentStatus === 'pending') &&
-    ((order.payment.method === 'cod' && order.payment.status === 'pending') ||
-      (order.payment.method === 'razorpay' && order.payment.status === 'captured' && order.payment.razorpayPaymentId))
-  );
+  const canCancel = isCustomerCancellationEligible(order);
 
   const handleCancelOrder = async () => {
     if (!order || !canCancel) return;
@@ -71,11 +69,13 @@ export default function OrderDetailPage() {
     try {
       const response = await fetch(`/api/orders/${order.id}/cancel`, { method: 'POST' });
       const data = await response.json();
+      const updatedOrder = await getOrderById(order.id);
+      if (updatedOrder) setOrder(updatedOrder);
       if (!response.ok) throw new Error(data.error || 'Could not cancel this order.');
 
-      setCancellationMessage(data.message || 'Order cancelled successfully.');
-      const updatedOrder = await getOrderById(order.id);
-      setOrder(updatedOrder);
+      setCancellationMessage(data.message || (data.reconciliationRequired
+        ? 'Refund status requires review. Do not submit another payment or refund request.'
+        : 'Order cancellation status updated.'));
     } catch (error) {
       setCancellationError(error instanceof Error ? error.message : 'Could not cancel this order.');
     } finally {
@@ -151,9 +151,35 @@ export default function OrderDetailPage() {
           {cancellationError}
         </div>
       )}
+      {order.payment.method === 'razorpay' && order.payment.status === 'pending' && (
+        <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Online payment is still pending, so cancellation is unavailable until its status is confirmed. If the status is uncertain, do not pay again; contact support for help.
+        </div>
+      )}
       {cancellationMessage && (
         <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           {cancellationMessage}
+        </div>
+      )}
+      {order.cancellationStatus === 'processing' && (
+        <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {order.payment.reconciliationRequired
+            ? 'Cancellation and refund status require review. Do not request another payment or refund.'
+            : order.payment.status === 'refund_pending'
+              ? 'Refund is processing. Your bank or payment method controls when it appears.'
+              : 'Cancellation is being processed. Refund status will update after it is verified.'}
+        </div>
+      )}
+      {order.cancellationStatus === 'completed' && (
+        <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          Order cancelled. {order.payment.method === 'razorpay' && order.payment.status === 'refunded'
+            ? 'Razorpay confirmed the refund; bank and payment-method posting times vary.'
+            : 'No payment refund was needed for this cash-on-delivery order.'}
+        </div>
+      )}
+      {order.payment.status === 'refund_failed' && order.cancellationStatus !== 'completed' && (
+        <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          The refund was not completed and the order remains active. Please contact support.
         </div>
       )}
       {canCancel && (
@@ -219,19 +245,12 @@ export default function OrderDetailPage() {
             <div key={idx} className="py-4 first:pt-0 last:pb-0 flex items-center justify-between gap-4">
               <div className="flex items-center gap-3.5 min-w-0">
                 <div className="relative w-16 h-16 rounded-lg bg-zinc-100 overflow-hidden shrink-0 border border-zinc-200">
-                  {typeof item.imageUrl === 'string' && item.imageUrl.trim() ? (
-                    <Image
-                      src={item.imageUrl.trim()}
-                      alt={item.title}
-                      fill
-                      sizes="64px"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-zinc-300">
-                      <ShoppingBag className="w-6 h-6" />
-                    </div>
-                  )}
+                  <SafeProductImage
+                    src={item.imageUrl}
+                    alt={item.title}
+                    sizes="64px"
+                    fallbackIconClassName="h-6 w-6"
+                  />
                 </div>
 
                 <div className="min-w-0">
@@ -299,14 +318,25 @@ export default function OrderDetailPage() {
               </div>
               <div className="flex justify-between">
                 <span className="text-zinc-500">Status</span>
-                <span className="capitalize font-medium text-emerald-700">
-                  {order.payment.status === 'refund_pending'
-                    ? 'Refund processing'
-                    : order.payment.status === 'refund_failed'
-                      ? 'Refund failed — contact support'
-                      : order.payment.status}
+                <span className={`capitalize font-medium ${paymentDisplay?.tone === 'success'
+                  ? 'text-emerald-700'
+                  : paymentDisplay?.tone === 'error'
+                    ? 'text-red-700'
+                    : 'text-amber-700'}`}>
+                  {paymentDisplay?.label}
                 </span>
               </div>
+              {paymentDisplay?.notice && (
+                <p className="text-zinc-600" role={order.payment.status === 'refund_failed' ? 'alert' : 'status'}>
+                  {paymentDisplay.notice}
+                </p>
+              )}
+              {paymentDisplay?.reference && (
+                <div className="flex justify-between gap-3">
+                  <span className="text-zinc-500">Refund reference</span>
+                  <span className="font-mono text-zinc-700 text-[11px]">{paymentDisplay.reference}</span>
+                </div>
+              )}
               {order.payment.razorpayPaymentId && (
                 <div className="flex justify-between">
                   <span className="text-zinc-500">Transaction ID</span>

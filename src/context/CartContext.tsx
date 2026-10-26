@@ -1,12 +1,20 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { doc, runTransaction } from 'firebase/firestore';
 import { db } from '@/lib/firebase/client';
 import { useAuth } from '@/hooks/useAuth';
 import type { CartItem } from '@/types';
 import { getInclusiveGstBreakdown } from '@/lib/orders/checkout-validation';
 import { calculateItemsSubtotal } from '@/lib/orders/money';
+import {
+  applyCartOperation,
+  getCartOwnerKey,
+  GUEST_CART_STORAGE_KEY,
+  resolveAuthenticatedCart,
+  type CartOperation,
+  type GuestCartSnapshot,
+} from '@/lib/cart/cart-state';
 
 interface CartContextType {
   items: CartItem[];
@@ -24,9 +32,51 @@ interface CartContextType {
   clearCart: () => void;
 }
 
+type CartState = { ownerKey: string | null; items: CartItem[] };
+
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-const CART_STORAGE_KEY = 'casaio_guest_cart';
+function readGuestCart(): GuestCartSnapshot | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const stored = window.localStorage.getItem(GUEST_CART_STORAGE_KEY);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as Partial<GuestCartSnapshot>;
+    if (typeof parsed.migrationId !== 'string' || !Array.isArray(parsed.items)) return null;
+    return { migrationId: parsed.migrationId, items: parsed.items as CartItem[] };
+  } catch {
+    return null;
+  }
+}
+
+function persistGuestCart(items: CartItem[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (items.length === 0) {
+      window.localStorage.removeItem(GUEST_CART_STORAGE_KEY);
+      return;
+    }
+    const existing = readGuestCart();
+    const snapshot: GuestCartSnapshot = {
+      migrationId: existing?.migrationId || crypto.randomUUID(),
+      items,
+    };
+    window.localStorage.setItem(GUEST_CART_STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    // Keep guest cart actions usable when browser storage is unavailable.
+  }
+}
+
+function clearGuestCartIfUnchanged(migrationId: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (readGuestCart()?.migrationId === migrationId) {
+      window.localStorage.removeItem(GUEST_CART_STORAGE_KEY);
+    }
+  } catch {
+    // A retained guest snapshot is harmless: Firestore records the migration ID.
+  }
+}
 
 function serializeCartItems(items: CartItem[]) {
   return items.map(({ variantSku, compareAtPrice, ...item }) => ({
@@ -36,198 +86,140 @@ function serializeCartItems(items: CartItem[]) {
   }));
 }
 
-function readStoredCartItems(): CartItem[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const stored = localStorage.getItem(CART_STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) return parsed;
-    }
-  } catch {}
-  return [];
-}
-
 export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
-  const [items, setItems] = useState<CartItem[]>([]);
+  const { user, isLoading: authLoading } = useAuth();
+  const userId = user?.uid;
+  const ownerKey = authLoading ? null : getCartOwnerKey(userId);
+  const [cartState, setCartState] = useState<CartState>({ ownerKey: null, items: [] });
   const [isOpen, setIsOpen] = useState(false);
+  const cartStateRef = useRef(cartState);
+  const hydrationGeneration = useRef(0);
+  const userTaskQueues = useRef(new Map<string, Promise<void>>());
 
-  // Read browser storage after the first render so the SSR markup and the
-  // browser's hydration markup both start with the same empty cart.
-  useEffect(() => {
-    const timer = window.setTimeout(() => setItems(readStoredCartItems()), 0);
-    return () => window.clearTimeout(timer);
+  const publishCart = useCallback((nextState: CartState) => {
+    cartStateRef.current = nextState;
+    setCartState(nextState);
   }, []);
 
-  // Sync with Firestore when User is authenticated
+  const enqueueUserTask = useCallback(<T,>(currentUserId: string, task: () => Promise<T>) => {
+    const previous = userTaskQueues.current.get(currentUserId) || Promise.resolve();
+    const next = previous.catch(() => undefined).then(task);
+    userTaskQueues.current.set(currentUserId, next.then(() => undefined, () => undefined));
+    return next;
+  }, []);
+
+  // Resolve identity before reading storage. Authenticated carts come only from
+  // that user's Firestore document; the guest cart has a separate storage key.
   useEffect(() => {
-    if (!user) return;
+    if (authLoading || !ownerKey) return;
+    const generation = ++hydrationGeneration.current;
+    let active = true;
 
-    const currentUserId = user.uid;
-    const cartRef = doc(db, 'carts', currentUserId);
-
-    async function syncFirestoreCart() {
-      try {
-        const snap = await getDoc(cartRef);
-        if (snap.exists()) {
-          const remoteCart = snap.data();
-          const remoteItems: CartItem[] = Array.isArray(remoteCart.items) ? remoteCart.items : [];
-
-          // Merge guest local items with remote items
-          setItems((currentLocal) => {
-            const mergedMap = new Map<string, CartItem>();
-
-            // Put remote items first
-            remoteItems.forEach((ri) => {
-              const key = ri.variantSku ? `${ri.productId}-${ri.variantSku}` : ri.productId;
-              mergedMap.set(key, { ...ri });
-            });
-
-            // Merge local items
-            currentLocal.forEach((li) => {
-              const key = li.variantSku ? `${li.productId}-${li.variantSku}` : li.productId;
-              const existing = mergedMap.get(key);
-              if (existing) {
-                const combinedQty = Math.min(existing.quantity + li.quantity, li.maxStock || 99);
-                mergedMap.set(key, { ...existing, quantity: combinedQty });
-              } else {
-                mergedMap.set(key, { ...li });
-              }
-            });
-
-            const merged = Array.from(mergedMap.values());
-            // Persist merged to Firestore and LocalStorage
-            try {
-              localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(merged));
-            } catch {}
-
-            setDoc(cartRef, {
-              userId: currentUserId,
-              items: serializeCartItems(merged),
-              updatedAt: new Date().toISOString(),
-            }, { merge: true }).catch(() => {});
-
-            return merged;
-          });
-        }
-      } catch {
-        // Fallback gracefully if firestore is offline
-      }
+    if (!userId) {
+      const guestItems = readGuestCart()?.items || [];
+      void Promise.resolve().then(() => {
+        if (active) publishCart({ ownerKey, items: guestItems });
+      });
+      return () => { active = false; };
     }
 
-    syncFirestoreCart();
-  }, [user]);
+    const cartRef = doc(db, 'carts', userId);
+    const guestCart = readGuestCart();
+    void enqueueUserTask(userId, () => runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(cartRef);
+      const remoteCart = snapshot.exists() ? snapshot.data() : null;
+      const resolved = resolveAuthenticatedCart(remoteCart, guestCart);
 
-  // 3. Save to LocalStorage and Firestore on state change
-  const persistItems = useCallback(
-    (newItems: CartItem[]) => {
-      setItems(newItems);
-      try {
-        localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(newItems));
-      } catch {
-        // Storage quota / privacy mode
-      }
-
-      if (user) {
-        const cartRef = doc(db, 'carts', user.uid);
-        setDoc(cartRef, {
-          userId: user.uid,
-          items: serializeCartItems(newItems),
+      if (resolved.shouldMigrateGuestCart && guestCart) {
+        transaction.set(cartRef, {
+          userId,
+          items: serializeCartItems(resolved.items),
+          guestCartMigrationId: resolved.guestCartMigrationId,
           updatedAt: new Date().toISOString(),
-        }, { merge: true }).catch(() => {});
+        }, { merge: true });
       }
-    },
-    [user]
-  );
 
-  // 4. Cart Mutations
+      return { items: resolved.items, migratedGuestId: resolved.shouldMigrateGuestCart ? guestCart?.migrationId : undefined };
+    })).then(({ items: remoteItems, migratedGuestId }) => {
+      if (migratedGuestId) clearGuestCartIfUnchanged(migratedGuestId);
+      if (active && hydrationGeneration.current === generation) {
+        publishCart({ ownerKey, items: remoteItems });
+      }
+    }).catch(() => {
+      if (active && hydrationGeneration.current === generation) publishCart({ ownerKey, items: [] });
+      console.warn('Could not load the authenticated cart from Firestore.');
+    });
+
+    return () => { active = false; };
+  }, [authLoading, userId, ownerKey, enqueueUserTask, publishCart]);
+
+  const commitOperation = useCallback((operation: CartOperation) => {
+    if (authLoading || !ownerKey) return;
+    const currentItems = cartStateRef.current.ownerKey === ownerKey ? cartStateRef.current.items : [];
+    const optimisticItems = applyCartOperation(currentItems, operation);
+    publishCart({ ownerKey, items: optimisticItems });
+
+    if (!userId) {
+      persistGuestCart(optimisticItems);
+      return;
+    }
+
+    const cartRef = doc(db, 'carts', userId);
+    void enqueueUserTask(userId, () => runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(cartRef);
+      const remoteItems: CartItem[] = snapshot.exists() && Array.isArray(snapshot.data().items)
+        ? snapshot.data().items as CartItem[]
+        : [];
+      const updatedItems = applyCartOperation(remoteItems, operation);
+      transaction.set(cartRef, {
+        userId,
+        items: serializeCartItems(updatedItems),
+        updatedAt: new Date().toISOString(),
+      }, { merge: true });
+      return updatedItems;
+    })).then((canonicalItems) => {
+      if (cartStateRef.current.ownerKey === ownerKey) {
+        publishCart({ ownerKey, items: canonicalItems });
+      }
+    }).catch(() => {
+      console.warn('Could not save the authenticated cart to Firestore.');
+    });
+  }, [authLoading, ownerKey, userId, enqueueUserTask, publishCart]);
+
   const addItem = useCallback(
     (item: Omit<CartItem, 'quantity'>, quantity = 1) => {
-      setItems((prev) => {
-        const itemKey = item.variantSku ? `${item.productId}-${item.variantSku}` : item.productId;
-        const index = prev.findIndex((i) => {
-          const k = i.variantSku ? `${i.productId}-${i.variantSku}` : i.productId;
-          return k === itemKey;
-        });
-
-        let updated: CartItem[];
-        if (index > -1) {
-          const existing = prev[index];
-          const newQty = Math.min(existing.quantity + quantity, item.maxStock || 99);
-          updated = [...prev];
-          updated[index] = { ...existing, quantity: newQty };
-        } else {
-          const newQty = Math.min(quantity, item.maxStock || 99);
-          updated = [...prev, { ...item, quantity: newQty }];
-        }
-
-        try {
-          localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(updated));
-        } catch {}
-
-        if (user) {
-          const cartRef = doc(db, 'carts', user.uid);
-          setDoc(cartRef, {
-            userId: user.uid,
-            items: serializeCartItems(updated),
-            updatedAt: new Date().toISOString(),
-          }, { merge: true }).catch(() => {});
-        }
-
-        return updated;
-      });
-
+      commitOperation({ type: 'add', item, quantity });
       setIsOpen(true);
     },
-    [user]
+    [commitOperation]
   );
 
   const removeItem = useCallback(
     (productId: string, variantSku?: string) => {
-      const updated = items.filter((i) => {
-        if (variantSku) {
-          return !(i.productId === productId && i.variantSku === variantSku);
-        }
-        return i.productId !== productId;
-      });
-      persistItems(updated);
+      commitOperation({ type: 'remove', productId, variantSku });
     },
-    [items, persistItems]
+    [commitOperation]
   );
 
   const updateQuantity = useCallback(
     (productId: string, quantity: number, variantSku?: string) => {
-      if (quantity <= 0) {
-        removeItem(productId, variantSku);
-        return;
-      }
-
-      const updated = items.map((i) => {
-        const matches = variantSku
-          ? i.productId === productId && i.variantSku === variantSku
-          : i.productId === productId;
-
-        if (matches) {
-          const clampedQty = Math.min(quantity, i.maxStock || 99);
-          return { ...i, quantity: clampedQty };
-        }
-        return i;
-      });
-
-      persistItems(updated);
+      commitOperation({ type: 'set-quantity', productId, quantity, variantSku });
     },
-    [items, removeItem, persistItems]
+    [commitOperation]
   );
 
   const clearCart = useCallback(() => {
-    persistItems([]);
-  }, [persistItems]);
+    commitOperation({ type: 'clear' });
+  }, [commitOperation]);
 
   const openCart = useCallback(() => setIsOpen(true), []);
   const closeCart = useCallback(() => setIsOpen(false), []);
 
-  // 5. Calculations
+  const items = useMemo(
+    () => ownerKey && cartState.ownerKey === ownerKey ? cartState.items : [],
+    [ownerKey, cartState]
+  );
+
   const itemCount = useMemo(
     () => items.reduce((sum, item) => sum + item.quantity, 0),
     [items]
@@ -244,12 +236,8 @@ export const CartProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [items]
   );
 
-  // Free insured dropship shipping across platform
   const shipping = 0;
-
-  // Taxes are inclusive in retail dropship pricing in India (GST)
   const tax = useMemo(() => getInclusiveGstBreakdown(subtotal).taxAmount, [subtotal]);
-
   const total = useMemo(() => subtotal + shipping, [subtotal, shipping]);
 
   return (

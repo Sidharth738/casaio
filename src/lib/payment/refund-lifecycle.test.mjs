@@ -9,15 +9,25 @@ const originalResolveFilename = Module._resolveFilename;
 const originalLoad = Module._load;
 let providerStatus = 'pending';
 let beforeRefundResponse;
+let providerRefunds = [];
+let providerPostRequests = [];
+let providerAmountRefunded = 0;
+let providerPaymentAmount = 12_500;
 class FakeRazorpay {
   constructor() {
-    this.api = { rq: { defaults: {} } };
-    this.payments = {
-      fetchMultipleRefund: async () => ({ items: [] }),
-      refund: async () => {
+    this.api = { rq: {
+      defaults: {},
+      post: async (path, body, options) => {
+        providerPostRequests.push({ path, body, options });
         if (beforeRefundResponse) await beforeRefundResponse();
-        return { id: refundId, status: providerStatus };
+        const refund = { id: refundId, payment_id: paymentId, amount: 12_500, currency: 'INR', status: providerStatus, receipt: `cancel_${orderId}` };
+        providerRefunds.push(refund);
+        return { data: refund };
       },
+    } };
+    this.payments = {
+      fetch: async (id) => ({ id, status: 'captured', amount: providerPaymentAmount, amount_refunded: providerAmountRefunded, currency: 'INR' }),
+      fetchMultipleRefund: async () => ({ items: providerRefunds }),
     };
   }
 }
@@ -31,6 +41,7 @@ Module._load = function (request, ...args) {
 };
 const { POST: paymentWebhook } = await import('@/app/api/payment/webhook/route');
 const { POST: cancelOrder } = await import('@/app/api/orders/[orderId]/cancel/route');
+const { POST: updateFulfillment } = await import('@/app/api/seller/orders/[orderId]/fulfillment/route');
 Module._resolveFilename = originalResolveFilename;
 Module._load = originalLoad;
 
@@ -44,6 +55,7 @@ const webhookSecret = 'fake-local-webhook-secret';
 let records;
 let operations;
 let queue;
+let authenticatedUserId = userId;
 
 function initialOrder(overrides = {}) {
   return {
@@ -51,7 +63,7 @@ function initialOrder(overrides = {}) {
     orderStatus: 'confirmed',
     cancellationStatus: 'none',
     statusTimeline: [],
-    items: [{ productId: 'product-local', quantity: 1, fulfillmentStatus: 'pending' }],
+    items: [{ productId: 'product-local', quantity: 1, sellerId: 'seller-alpha', fulfillmentStatus: 'pending' }],
     pricing: { totalAmount: 125 },
     payment: {
       method: 'razorpay', status: 'captured', razorpayOrderId,
@@ -70,7 +82,31 @@ function ref(path) {
     id: path.split('/').at(-1),
     path,
     get: async () => snapshot(records.get(path)),
+    collection: (name) => collection(`${path}/${name}`),
     update: async (changes) => applyUpdate(path, changes),
+  };
+}
+
+function collection(path) {
+  return {
+    path,
+    doc: (id) => ref(`${path}/${id || `attempt-${Math.random().toString(36).slice(2)}`}`),
+    get: async () => ({
+      empty: ![...records.keys()].some((entryPath) => entryPath.startsWith(`${path}/`)),
+      docs: [...records.entries()].filter(([entryPath]) => entryPath.startsWith(`${path}/`))
+        .map(([entryPath, value]) => ({ id: entryPath.split('/').at(-1), ref: ref(entryPath), exists: true, data: () => structuredClone(value) })),
+    }),
+    where: (field, _op, value) => ({
+      limit: () => ({ get: async () => {
+        const matched = [...records.entries()].find(([entryPath, order]) => entryPath === 'orders/' + orderId &&
+          (field === 'payment.razorpayPaymentId'
+            ? order?.payment?.razorpayPaymentId === value
+            : order?.payment?.razorpayOrderId === value));
+        return matched
+          ? { empty: false, docs: [{ id: orderId, ref: ref(matched[0]), data: () => structuredClone(matched[1]) }] }
+          : { empty: true, docs: [] };
+      } }),
+    }),
   };
 }
 
@@ -91,27 +127,20 @@ function createHarness(order = initialOrder(), products = { 'product-local': { s
     [`checkoutRequests/_active_razorpay_${userId}`, { orderId }],
     [`checkoutRequests/_checkout_coord_${userId}`, { orderId }],
     [`users/${userId}`, { role: 'customer', status: 'active' }],
+    ['users/another-customer', { role: 'customer', status: 'active' }],
+    ['users/seller-alpha', { role: 'seller', status: 'active' }],
+    ['sellers/seller-alpha', { status: 'approved', storeName: 'Alpha Store' }],
   ]);
   for (const [productId, product] of Object.entries(products)) {
     records.set(`products/${productId}`, structuredClone(product));
   }
   operations = [];
   queue = Promise.resolve();
-  mock.method(adminAuth, 'verifySessionCookie', async () => ({ uid: userId, email: 'customer@example.invalid' }));
-  mock.method(adminDb, 'collection', (name) => ({
-    doc: (id) => ref(`${name}/${id}`),
-    where: (field, _op, value) => ({
-      limit: () => ({ get: async () => {
-        const order = records.get(`orders/${orderId}`);
-        const actual = field === 'payment.razorpayPaymentId'
-          ? order?.payment?.razorpayPaymentId
-          : order?.payment?.razorpayOrderId;
-        return actual === value
-          ? { empty: false, docs: [{ ref: ref(`orders/${orderId}`), data: () => structuredClone(order) }] }
-          : { empty: true, docs: [] };
-      } }),
-    }),
+  mock.method(adminAuth, 'verifySessionCookie', async (cookie) => ({
+    uid: cookie === 'seller-session' ? 'seller-alpha' : authenticatedUserId,
+    email: 'customer@example.invalid',
   }));
+  mock.method(adminDb, 'collection', collection);
   mock.method(adminDb, 'runTransaction', (callback) => {
     // The fake serializes callbacks to model committed transaction ordering.
     // It does not emulate Firestore's optimistic conflict detection/retries.
@@ -122,7 +151,20 @@ function createHarness(order = initialOrder(), products = { 'product-local': { s
         get: async (documentRef) => {
           assert.equal(writeStarted, false, `read ${documentRef.path} after first write`);
           operations.push(`get:${documentRef.path}`);
+          if (documentRef.path.endsWith('/refundAttempts')) {
+            const prefix = `${documentRef.path}/`;
+            return { docs: [...records.entries()].filter(([path]) => path.startsWith(prefix))
+              .map(([path, value]) => ({ id: path.split('/').at(-1), ref: ref(path), exists: true, data: () => structuredClone(value) })) };
+          }
           return snapshot(records.get(documentRef.path));
+        },
+        create: (documentRef, value) => {
+          writeStarted = true;
+          operations.push(`create:${documentRef.path}`);
+          writes.push(() => {
+            if (records.has(documentRef.path)) throw new Error('Document already exists');
+            records.set(documentRef.path, structuredClone(value));
+          });
         },
         update: (documentRef, changes) => {
           writeStarted = true;
@@ -145,6 +187,8 @@ function createHarness(order = initialOrder(), products = { 'product-local': { s
   return {
     order: () => records.get(`orders/${orderId}`),
     product: (productId = 'product-local') => records.get(`products/${productId}`),
+    attempts: () => [...records.entries()].filter(([path]) => path.startsWith(`orders/${orderId}/refundAttempts/`))
+      .map(([, value]) => value),
   };
 }
 
@@ -159,24 +203,31 @@ function setTestConfig() {
   process.env.RAZORPAY_WEBHOOK_SECRET_MODE = 'test';
 }
 
-function webhookRequest(event, entity) {
+function webhookRequest(event, entity, invalidSignature = false) {
   const rawBody = JSON.stringify({ event, payload: { refund: { entity } } });
-  const signature = createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
+  const signature = invalidSignature ? 'invalid-signature' : createHmac('sha256', webhookSecret).update(rawBody).digest('hex');
   return { text: async () => rawBody, headers: { get: (name) => name === 'x-razorpay-signature' ? signature : null } };
 }
 
-function cancelRequest() {
-  return { cookies: { get: (name) => name === 'casaio_session' ? { value: 'local-session' } : undefined } };
+function cancelRequest(session = 'local-session') {
+  return { cookies: { get: (name) => name === 'casaio_session' ? { value: session } : undefined } };
 }
 
-async function deliverRefund(event, status = event === 'refund.processed' ? 'processed' : 'failed', id = refundId) {
-  return paymentWebhook(webhookRequest(event, { id, payment_id: paymentId, status }));
+async function deliverRefund(event, status = event === 'refund.processed' ? 'processed' : 'failed', id = refundId, overrides = {}, invalidSignature = false) {
+  return paymentWebhook(webhookRequest(event, {
+    id, payment_id: paymentId, amount: 12_500, currency: 'INR', status, receipt: `cancel_${orderId}`, notes: { orderId }, ...overrides,
+  }, invalidSignature));
 }
 
 beforeEach(() => {
   mock.restoreAll();
   setTestConfig();
   providerStatus = 'pending';
+  providerRefunds = [];
+  providerPostRequests = [];
+  providerAmountRefunded = 0;
+  providerPaymentAmount = 12_500;
+  authenticatedUserId = userId;
   beforeRefundResponse = undefined;
 });
 
@@ -223,36 +274,180 @@ test('refund events arriving before the cancellation transaction stores the refu
   assert.equal(harness.order().payment.status, 'captured');
 });
 
-test('cancellation preserves a processed webhook state when the provider response is stale pending', async () => {
+test('an early signed refund webhook requests retry and completes after the refund ID is persisted', async () => {
   const harness = createHarness();
+  let earlyWebhookResponse;
   beforeRefundResponse = async () => {
-    // Simulate Razorpay delivering the webhook before the refund API response
-    // is returned to the cancellation handler.
-    const reserve = await adminDb.runTransaction(async (tx) => {
-      const orderRef = ref(`orders/${orderId}`);
-      const snap = await tx.get(orderRef);
-      tx.update(orderRef, { cancellationStatus: 'processing', 'payment.razorpayRefundId': refundId, 'payment.status': 'refund_pending' });
-      return snap.exists;
-    });
-    assert.equal(reserve, true);
-    assert.equal((await deliverRefund('refund.processed')).status, 200);
+    // Cancellation and attempt are reserved, but the refund ID is not persisted yet.
+    earlyWebhookResponse = await deliverRefund('refund.processed');
   };
   const response = await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) });
-  assert.equal(response.status, 200);
-  assert.equal((await response.json()).paymentStatus, 'refunded');
+  assert.equal(earlyWebhookResponse.status, 503);
+  assert.equal(response.status, 202);
+  assert.equal(harness.order().payment.status, 'refund_pending');
+  assert.equal(harness.attempts()[0].state, 'provider_identified');
+  assert.equal((await deliverRefund('refund.processed')).status, 200);
+  const duplicateCancellation = await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) });
+  assert.equal(duplicateCancellation.status, 200);
   assert.equal(harness.order().payment.status, 'refunded');
   assert.equal(harness.order().orderStatus, 'cancelled');
   assert.equal(harness.product().stock, 5);
+  assert.equal(harness.attempts()[0].state, 'succeeded');
 });
 
 test('provider refund failure does not cancel the order or release inventory', async () => {
   const harness = createHarness();
   providerStatus = 'failed';
   const response = await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) });
-  assert.equal(response.status, 502);
+  assert.equal(response.status, 409);
   assert.equal(harness.order().orderStatus, 'confirmed');
   assert.equal(harness.order().cancellationStatus, 'failed');
   assert.equal(harness.order().payment.status, 'refund_failed');
+  assert.equal(harness.product().stock, 4);
+});
+
+test('pre-shipment captured online cancellation persists a refund and restores inventory only after processed evidence', async () => {
+  const harness = createHarness();
+  providerStatus = 'processed';
+  const response = await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) });
+  assert.equal(response.status, 200);
+  assert.equal(harness.order().orderStatus, 'cancelled');
+  assert.equal(harness.order().cancellationStatus, 'completed');
+  assert.equal(harness.order().payment.status, 'refunded');
+  assert.equal(harness.order().payment.razorpayRefundId, refundId);
+  assert.equal(harness.product().stock, 5);
+  assert.equal(harness.attempts().length, 1);
+  assert.equal(harness.attempts()[0].state, 'succeeded');
+  assert.equal(providerPostRequests[0].options.headers['X-Refund-Idempotency'], harness.attempts()[0].idempotencyKey);
+  assert.equal(providerPostRequests[0].body, harness.attempts()[0].requestBodyJson);
+});
+
+test('a timed-out refund remains unresolved and a retry reuses the exact idempotency key and body', async () => {
+  const harness = createHarness();
+  beforeRefundResponse = async () => { throw new Error('synthetic network timeout'); };
+  const first = await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) });
+  assert.equal(first.status, 202);
+  assert.equal(harness.order().orderStatus, 'confirmed');
+  assert.equal(harness.order().cancellationStatus, 'processing');
+  assert.equal(harness.order().payment.status, 'captured');
+  assert.equal(harness.order().payment.reconciliationRequired, true);
+  assert.equal(harness.product().stock, 4);
+  assert.equal(harness.attempts()[0].state, 'submission_unknown');
+  const firstKey = providerPostRequests[0].options.headers['X-Refund-Idempotency'];
+  const firstBody = providerPostRequests[0].body;
+
+  beforeRefundResponse = undefined;
+  const retry = await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) });
+  assert.equal(retry.status, 202);
+  assert.equal(providerPostRequests.length, 2);
+  assert.equal(providerPostRequests[1].options.headers['X-Refund-Idempotency'], firstKey);
+  assert.equal(providerPostRequests[1].body, firstBody);
+  assert.equal(harness.attempts()[0].state, 'provider_identified');
+  assert.equal(harness.order().payment.status, 'refund_pending');
+  assert.equal(harness.product().stock, 4);
+});
+
+test('an existing matching provider refund is reconciled without another submission', async () => {
+  const harness = createHarness();
+  providerAmountRefunded = 12_500;
+  providerRefunds = [{
+    id: refundId, payment_id: paymentId, amount: 12_500, currency: 'INR',
+    status: 'processed', receipt: `cancel_${orderId}`,
+  }];
+  const response = await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) });
+  assert.equal(response.status, 200);
+  assert.equal(providerPostRequests.length, 0);
+  assert.equal(harness.order().payment.status, 'refunded');
+  assert.equal(harness.order().orderStatus, 'cancelled');
+  assert.equal(harness.product().stock, 5);
+});
+
+test('an unrelated prior refund fails closed for manual reconciliation', async () => {
+  const harness = createHarness();
+  providerAmountRefunded = 1;
+  providerRefunds = [{
+    id: 'rfnd_other', payment_id: paymentId, amount: 1, currency: 'INR',
+    status: 'processed', receipt: 'manual-refund',
+  }];
+  const response = await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) });
+  assert.equal(response.status, 202);
+  assert.equal((await response.json()).reconciliationRequired, true);
+  assert.equal(providerPostRequests.length, 0);
+  assert.equal(harness.order().payment.reconciliationReason, 'refund_balance_uncertain');
+  assert.equal(harness.order().orderStatus, 'confirmed');
+  assert.equal(harness.product().stock, 4);
+});
+
+test('a mismatch in captured payment amount fails closed before refund submission', async () => {
+  const harness = createHarness();
+  providerPaymentAmount = 12_499;
+  const response = await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) });
+  assert.equal(response.status, 202);
+  assert.equal((await response.json()).reconciliationRequired, true);
+  assert.equal(providerPostRequests.length, 0);
+  assert.equal(harness.order().payment.reconciliationReason, 'refund_balance_uncertain');
+  assert.equal(harness.order().payment.status, 'captured');
+  assert.equal(harness.product().stock, 4);
+});
+
+test('shipped, delivered, uncaptured, and foreign-customer orders cannot be cancelled', async (t) => {
+  for (const orderStatus of ['shipped', 'delivered']) {
+    await t.test(`${orderStatus} order`, async () => {
+      const harness = createHarness(initialOrder({ orderStatus }));
+      const response = await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) });
+      assert.equal(response.status, 409);
+      assert.equal(harness.order().cancellationStatus, 'none');
+      assert.equal(providerPostRequests.length, 0);
+    });
+  }
+  await t.test('uncaptured online payment', async () => {
+    const harness = createHarness(initialOrder({ payment: { method: 'razorpay', status: 'pending', razorpayPaymentId: paymentId } }));
+    const response = await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) });
+    assert.equal(response.status, 409);
+    assert.equal(harness.order().cancellationStatus, 'none');
+    assert.equal(providerPostRequests.length, 0);
+  });
+  await t.test('another customer', async () => {
+    const harness = createHarness();
+    authenticatedUserId = 'another-customer';
+    const response = await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) });
+    assert.equal(response.status, 404);
+    assert.equal(harness.order().cancellationStatus, 'none');
+    assert.equal(providerPostRequests.length, 0);
+  });
+});
+
+test('duplicate and concurrent cancellation requests share one durable attempt', async () => {
+  const harness = createHarness();
+  const responses = await Promise.all([
+    cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) }),
+    cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) }),
+  ]);
+  assert.ok(responses.every((response) => response.status === 202));
+  assert.equal(harness.attempts().length, 1);
+  assert.ok(providerPostRequests.length >= 1 && providerPostRequests.length <= 2);
+  assert.ok(providerPostRequests.every((request) => request.options.headers['X-Refund-Idempotency'] ===
+    harness.attempts()[0].idempotencyKey));
+  assert.ok(providerPostRequests.every((request) => request.body === harness.attempts()[0].requestBodyJson));
+  assert.equal(harness.product().stock, 4);
+});
+
+test('concurrent seller fulfillment and customer cancellation cannot both win', async () => {
+  const harness = createHarness();
+  const fulfillmentRequest = {
+    cookies: { get: (name) => name === 'casaio_session' ? { value: 'seller-session' } : undefined },
+    json: async () => ({ fulfillmentStatus: 'processing', productId: 'product-local' }),
+  };
+  const [cancelResponse, fulfillmentResponse] = await Promise.all([
+    cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) }),
+    updateFulfillment(fulfillmentRequest, { params: Promise.resolve({ orderId }) }),
+  ]);
+  assert.ok([200, 202, 409].includes(cancelResponse.status));
+  assert.ok([200, 409].includes(fulfillmentResponse.status));
+  const order = harness.order();
+  const cancellationWon = order.cancellationStatus === 'processing' || order.orderStatus === 'cancelled';
+  const fulfillmentWon = order.items[0].fulfillmentStatus === 'processing';
+  assert.notEqual(cancellationWon && fulfillmentWon, true);
   assert.equal(harness.product().stock, 4);
 });
 
@@ -360,8 +555,11 @@ test('pending refund holds cancellation and inventory until processed webhook, t
   assert.equal((await deliverRefund('refund.processed')).status, 200);
   assert.equal(harness.order().orderStatus, 'cancelled');
   assert.equal(harness.order().cancellationStatus, 'completed');
+  assert.equal(harness.attempts()[0].state, 'succeeded');
+  assert.equal(harness.attempts()[0].providerStatus, 'processed');
   assert.equal(harness.product().stock, 5);
   assert.equal((await deliverRefund('refund.processed')).status, 200);
+  assert.equal(harness.attempts()[0].state, 'succeeded');
   assert.equal(harness.product().stock, 5);
 });
 
@@ -372,5 +570,79 @@ test('failed refund webhook ends processing without restoring inventory', async 
   assert.equal(harness.order().cancellationStatus, 'failed');
   assert.equal(harness.order().payment.status, 'refund_failed');
   assert.equal(harness.order().orderStatus, 'confirmed');
+  assert.equal(harness.attempts()[0].state, 'failed');
+  assert.equal(harness.attempts()[0].providerStatus, 'failed');
+  assert.equal(harness.product().stock, 4);
+});
+
+test('duplicate and out-of-order durable refund webhooks cannot regress terminal attempt state', async () => {
+  const harness = createHarness();
+  assert.equal((await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) })).status, 202);
+
+  assert.equal((await deliverRefund('refund.processed')).status, 200);
+  assert.equal((await deliverRefund('refund.processed')).status, 200);
+  assert.equal((await deliverRefund('refund.failed')).status, 200);
+  assert.equal(harness.attempts()[0].state, 'succeeded');
+  assert.equal(harness.attempts()[0].providerStatus, 'processed');
+  assert.equal(harness.order().payment.status, 'refunded');
+  assert.equal(harness.order().cancellationStatus, 'completed');
+  assert.equal(harness.product().stock, 5);
+});
+
+test('durable refund webhook requires matching provider ID, payment, amount, and currency', async () => {
+  const harness = createHarness();
+  assert.equal((await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) })).status, 202);
+
+  assert.equal((await deliverRefund('refund.processed', 'processed', 'rfnd-unrelated')).status, 200);
+  assert.equal((await deliverRefund('refund.processed', 'processed', refundId, { payment_id: 'pay-unrelated' })).status, 200);
+  assert.equal((await deliverRefund('refund.processed', 'processed', refundId, { amount: 12_499 })).status, 409);
+  assert.equal((await deliverRefund('refund.processed', 'processed', refundId, { currency: 'USD' })).status, 409);
+  assert.equal((await deliverRefund('refund.processed', 'processed', refundId, { notes: { orderId: 'order-unrelated' } })).status, 409);
+  assert.equal(harness.attempts()[0].state, 'provider_identified');
+  assert.equal(harness.order().payment.status, 'refund_pending');
+  assert.equal(harness.product().stock, 4);
+});
+
+test('invalid refund webhook signature cannot update a durable attempt', async () => {
+  const harness = createHarness();
+  assert.equal((await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) })).status, 202);
+
+  const response = await deliverRefund('refund.processed', 'processed', refundId, {}, true);
+  assert.equal(response.status, 400);
+  assert.equal(harness.attempts()[0].state, 'provider_identified');
+  assert.equal(harness.order().payment.status, 'refund_pending');
+  assert.equal(harness.product().stock, 4);
+});
+
+test('early refund events are retried while permanently unmatched payment events are acknowledged', async () => {
+  const harness = createHarness(initialOrder({ cancellationStatus: 'processing' }));
+  assert.equal((await deliverRefund('refund.processed')).status, 503);
+  assert.equal((await deliverRefund('refund.processed', 'processed', refundId, { payment_id: 'pay-unmatched' })).status, 200);
+  assert.equal(harness.order().payment.status, 'captured');
+});
+
+test('a missing active-attempt pointer cannot fall through to legacy order-only reconciliation', async () => {
+  const harness = createHarness();
+  assert.equal((await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) })).status, 202);
+  delete harness.order().payment.activeRefundAttemptId;
+
+  const response = await deliverRefund('refund.processed');
+  assert.equal(response.status, 503);
+  assert.equal(harness.attempts()[0].state, 'provider_identified');
+  assert.equal(harness.order().payment.status, 'refund_pending');
+  assert.equal(harness.product().stock, 4);
+});
+
+test('a nonterminal attempt-state mismatch remains retryable instead of acknowledging the event', async () => {
+  const harness = createHarness();
+  assert.equal((await cancelOrder(cancelRequest(), { params: Promise.resolve({ orderId }) })).status, 202);
+  const attempt = harness.attempts()[0];
+  Object.assign(attempt, { state: 'not_submitted' });
+  delete attempt.submissionStartedAt;
+  delete attempt.providerRefundId;
+  delete attempt.providerStatus;
+  delete attempt.providerVerifiedAt;
+  assert.equal((await deliverRefund('refund.processed')).status, 503);
+  assert.equal(harness.order().payment.status, 'refund_pending');
   assert.equal(harness.product().stock, 4);
 });

@@ -2,13 +2,13 @@
 
 import React from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { Trash2, ArrowRight, ShoppingBag, ShieldCheck, Truck, RefreshCw, ChevronRight } from 'lucide-react';
 import { useCart } from '@/hooks/useCart';
 import { Container } from '@/components/ui/Container';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { formatCurrency } from '@/lib/utils';
+import { SafeProductImage } from '@/components/product/SafeProductImage';
 
 export default function CartPage() {
   const { items, itemCount, subtotal, shipping, total, updateQuantity, removeItem, clearCart } = useCart();
@@ -76,19 +76,7 @@ export default function CartPage() {
                   <div key={key} className="py-6 flex flex-col sm:flex-row gap-5">
                     {/* Image */}
                     <div className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-xl overflow-hidden bg-zinc-100 shrink-0 border border-zinc-200/80">
-                      {item.imageUrl ? (
-                        <Image
-                          src={item.imageUrl}
-                          alt={item.title}
-                          fill
-                          sizes="112px"
-                          className="object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-zinc-300">
-                          <ShoppingBag className="w-8 h-8" />
-                        </div>
-                      )}
+                      <SafeProductImage src={item.imageUrl} alt={item.title} sizes="112px" fallbackIconClassName="w-8 h-8" />
                     </div>
 
                     {/* Details */}

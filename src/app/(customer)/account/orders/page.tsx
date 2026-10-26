@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import {
   ShoppingBag,
   ArrowRight,
@@ -17,6 +16,7 @@ import { getUserOrders } from '@/lib/firebase/firestore';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { formatCurrency, formatDate } from '@/lib/utils';
+import { SafeProductImage } from '@/components/product/SafeProductImage';
 
 export default function CustomerOrdersPage() {
   const { user } = useAuth();
@@ -162,19 +162,12 @@ export default function CustomerOrdersPage() {
                   >
                     <div className="flex items-center gap-3.5 min-w-0">
                       <div className="relative w-12 h-12 rounded-lg bg-zinc-100 overflow-hidden shrink-0 border border-zinc-200">
-                        {typeof item.imageUrl === 'string' && item.imageUrl.trim() ? (
-                          <Image
-                            src={item.imageUrl.trim()}
-                            alt={item.title}
-                            fill
-                            sizes="48px"
-                            className="object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-zinc-300">
-                            <ShoppingBag className="w-4 h-4" />
-                          </div>
-                        )}
+                        <SafeProductImage
+                          src={item.imageUrl}
+                          alt={item.title}
+                          sizes="48px"
+                          fallbackIconClassName="h-4 w-4"
+                        />
                       </div>
 
                       <div className="min-w-0">

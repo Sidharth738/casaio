@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import {
   Plus,
@@ -13,6 +12,7 @@ import type { Product, Category, ProductImage } from '@/types';
 import { getCategories } from '@/lib/firebase/firestore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { SafeProductImage } from '@/components/product/SafeProductImage';
 
 interface ProductFormProps {
   initialProduct?: Product | null;
@@ -288,13 +288,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({
                 img.isPrimary ? 'border-orange-600 ring-2 ring-orange-600/20' : 'border-zinc-200'
               }`}
             >
-              <Image
-                src={img.url}
-                alt={img.altText || 'Thumbnail'}
-                fill
-                sizes="150px"
-                className="object-cover"
-              />
+              <SafeProductImage src={img.url} alt={img.altText || 'Thumbnail'} sizes="150px" />
 
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                 {!img.isPrimary && (

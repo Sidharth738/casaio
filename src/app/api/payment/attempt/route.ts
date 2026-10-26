@@ -20,6 +20,27 @@ function json(data: Record<string, unknown>, status = 200) {
   return NextResponse.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
+type RecoverablePaymentOrder = {
+  customerId?: unknown;
+  payment?: {
+    method?: unknown;
+    status?: unknown;
+    reconciliationRequired?: unknown;
+    failureFinalizedAt?: unknown;
+  };
+  orderStatus?: unknown;
+  cancellationStatus?: unknown;
+};
+
+function isUnresolvedPaymentOrder(order: RecoverablePaymentOrder | undefined, userId: string) {
+  if (!order || order.customerId !== userId || order.payment?.method !== 'razorpay') return false;
+  const status = order.payment?.status;
+  const wasCancelled = order.orderStatus === 'cancelled' || order.cancellationStatus === 'completed';
+  return status === 'pending' || status === 'authorized' ||
+    (status === 'captured' && (Boolean(order.payment?.reconciliationRequired) || wasCancelled)) ||
+    (status === 'failed' && (Boolean(order.payment?.failureFinalizedAt) || wasCancelled));
+}
+
 export async function GET(request: NextRequest) {
   const correlationId = randomUUID();
   let failureCategory = 'unexpected_internal_error';
@@ -30,8 +51,69 @@ export async function GET(request: NextRequest) {
     const lockRef = getActivePaymentAttemptRef(user.uid);
     failureCategory = 'firestore_read_failure';
     const lockSnap = await lockRef.get();
-    if (!lockSnap.exists) return json({ active: false });
-    const lock = lockSnap.data()!;
+    let lock = lockSnap.data();
+
+    // The lock is a coordination pointer, not the source of truth. A capture
+    // webhook or verification can remove it, so recover unresolved orders from
+    // this authenticated customer's own order history before reporting idle.
+    if (!lockSnap.exists) {
+      const ownedOrders = await adminDb.collection('orders')
+        .where('customerId', '==', user.uid)
+        .get();
+      const candidates = ownedOrders.docs.filter((document) =>
+        isUnresolvedPaymentOrder(document.data(), user.uid)
+      );
+
+      if (candidates.length === 0) return json({ active: false });
+      if (candidates.length !== 1) {
+        return json({ active: true, status: 'unknown', retryAvailable: false });
+      }
+
+      const candidate = candidates[0];
+      failureCategory = 'firestore_transaction_failure';
+      const claim = await adminDb.runTransaction(async (transaction) => {
+        const [currentLockSnap, currentOrderSnap] = await Promise.all([
+          transaction.get(lockRef),
+          transaction.get(candidate.ref),
+        ]);
+        const currentOrder = currentOrderSnap.data();
+        if (!currentOrderSnap.exists || currentOrder?.customerId !== user.uid || currentOrder.payment?.method !== 'razorpay') {
+          return 'changed';
+        }
+        // A concurrent verifier/webhook may have completed this order after
+        // discovery. Preserve that persisted result instead of returning an
+        // unknown state just because its active pointer was removed.
+        if (currentOrder.payment?.status === 'captured') return candidate.id;
+        if (!isUnresolvedPaymentOrder(currentOrder, user.uid)) return 'changed';
+        if (currentLockSnap.exists) {
+          return currentLockSnap.data()?.userId === user.uid &&
+            typeof currentLockSnap.data()?.orderId === 'string'
+            ? currentLockSnap.data()!.orderId as string
+            : 'invalid-lock';
+        }
+        transaction.set(lockRef, {
+          userId: user.uid,
+          orderId: candidate.id,
+          orderNumber: currentOrder.orderNumber,
+          createdAt: currentOrder.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+        return candidate.id;
+      });
+      failureCategory = 'unexpected_internal_error';
+
+      if (claim === 'invalid-lock' || claim === 'changed') {
+        return json({ active: true, status: 'unknown', retryAvailable: false });
+      }
+
+      const recoveredOrderId = claim;
+      // Keep the transaction's result locally. A concurrent capture can delete
+      // the pointer immediately after the claim commits; rereading it here
+      // would turn a successfully recovered order back into an unknown result.
+      lock = { userId: user.uid, orderId: recoveredOrderId };
+    }
+
+    if (!lock) return json({ active: true, status: 'unknown', retryAvailable: false });
     if (lock.userId !== user.uid || typeof lock.orderId !== 'string') {
       return json({ active: true, status: 'unknown', retryAvailable: false });
     }
@@ -132,11 +214,13 @@ export async function GET(request: NextRequest) {
         const currentOrder = currentOrderSnap.data();
         if (!currentOrder || currentOrder.customerId !== user.uid ||
             currentOrder.payment?.method !== 'razorpay' ||
-            currentOrder.payment?.razorpayOrderId !== razorpayOrderId ||
-            currentLockSnap.data()?.orderId !== lock.orderId) return 'conflict';
+            currentOrder.payment?.razorpayOrderId !== razorpayOrderId) return 'conflict';
         if (currentOrder.payment?.status === 'captured') {
           await stageOnlineReservationConsumed(transaction, adminDb, currentOrder, orderRef.id, now);
-          if (currentOrder.payment?.razorpayPaymentId === captured.id) return 'already-captured';
+          if (currentOrder.payment?.razorpayPaymentId === captured.id) {
+            if (currentLockSnap.data()?.orderId === lock.orderId) transaction.delete(lockRef);
+            return 'already-captured';
+          }
           transaction.update(orderRef, {
             'payment.reconciliationRequired': true,
             'payment.reconciliationStatus': 'open',
@@ -146,6 +230,7 @@ export async function GET(request: NextRequest) {
           });
           return 'reconciliation-required';
         }
+        if (currentLockSnap.data()?.orderId !== lock.orderId) return 'conflict';
         const currentNeedsReconciliation = currentOrder.payment?.status === 'failed' || Boolean(currentOrder.payment?.failureFinalizedAt) ||
           currentOrder.orderStatus === 'cancelled' || currentOrder.cancellationStatus === 'completed';
         if (currentOrder.payment?.status !== 'pending' && currentOrder.payment?.status !== 'authorized' && !currentNeedsReconciliation) return 'conflict';

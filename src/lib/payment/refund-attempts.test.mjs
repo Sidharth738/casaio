@@ -26,12 +26,13 @@ function makeDb(initialOrder = {}) {
   records.set(`orders/${orderId}`, {
     customerId,
     orderStatus: 'confirmed',
-    cancellationStatus: 'processing',
-    items: [{ fulfillmentStatus: 'pending' }],
+    cancellationStatus: 'none',
+    items: [{ productId: 'product-refund-attempt-unit', quantity: 1, fulfillmentStatus: 'pending' }],
     pricing: { totalAmount: 125 },
     payment: { method: 'razorpay', status: 'captured', razorpayPaymentId: paymentId },
     ...copy(initialOrder),
   });
+  records.set('products/product-refund-attempt-unit', { stock: 1 });
   let nextId = 0;
   let queue = Promise.resolve();
   let failNextTransaction = false;
@@ -49,6 +50,7 @@ function makeDb(initialOrder = {}) {
 
   function collection(path) {
     return {
+      path,
       doc(id) {
         return ref(`${path}/${id ?? `attempt-${++nextId}`}`);
       },
@@ -75,8 +77,21 @@ function makeDb(initialOrder = {}) {
         const transaction = {
           get: async (documentRef) => {
             assert.equal(hasWritten, false, `Firestore read after write: ${documentRef.path}`);
+            if (documentRef.path.endsWith('/refundAttempts')) {
+              const prefix = `${documentRef.path}/`;
+              return { docs: [...records.entries()]
+                .filter(([path]) => path.startsWith(prefix))
+                .map(([, data]) => ({ exists: true, data: () => copy(data) })) };
+            }
             const data = records.get(documentRef.path);
             return { exists: data !== undefined, data: () => copy(data) };
+          },
+          create: (documentRef, data) => {
+            hasWritten = true;
+            writes.push(() => {
+              if (records.has(documentRef.path)) throw new Error(`Document already exists: ${documentRef.path}`);
+              records.set(documentRef.path, copy(data));
+            });
           },
           create: (documentRef, data) => {
             hasWritten = true;
@@ -88,6 +103,10 @@ function makeDb(initialOrder = {}) {
           update: (documentRef, changes) => {
             hasWritten = true;
             writes.push(() => apply(documentRef.path, changes));
+          },
+          delete: (documentRef) => {
+            hasWritten = true;
+            writes.push(() => records.delete(documentRef.path));
           },
         };
         const result = await callback(transaction);
@@ -106,6 +125,7 @@ function makeDb(initialOrder = {}) {
   return {
     db,
     get(path) { return copy(records.get(path)); },
+    set(path, value) { records.set(path, copy(value)); },
     paths() { return [...records.keys()]; },
     failNext() { failNextTransaction = true; },
   };
@@ -148,6 +168,10 @@ test('reserves one durable attempt and returns it for duplicate requests', async
   assert.equal(second.attempt.id, first.attempt.id);
   assert.equal(harness.paths().filter((path) => path.includes('/refundAttempts/')).length, 1);
   assert.equal(harness.get(`orders/${orderId}`).payment.activeRefundAttemptId, first.attempt.id);
+  assert.equal(harness.get(`orders/${orderId}`).cancellationStatus, 'processing');
+  assert.equal(first.attempt.amount, 12_500);
+  assert.equal(first.attempt.requestBodyJson, JSON.stringify(first.attempt.requestBody));
+  assert.match(first.attempt.idempotencyKey, /^casaio-cancel-/);
 });
 
 test('concurrent reservations converge on one attempt document', async () => {
@@ -288,4 +312,34 @@ test('transaction failure leaves both the attempt and order pointer unchanged', 
   );
   assert.equal(harness.get(`orders/${orderId}/refundAttempts/${reservation.attempt.id}`).state, 'not_submitted');
   assert.equal(harness.get(`orders/${orderId}`).payment.activeRefundAttemptId, reservation.attempt.id);
+  assert.equal(harness.get(`orders/${orderId}`).cancellationStatus, 'processing');
+});
+
+test('rejects ineligible, uncaptured, invalid-amount, and inconsistent legacy orders', async (t) => {
+  const cases = [
+    ['shipped', { orderStatus: 'shipped' }, 'ineligible'],
+    ['fulfillment started', { items: [{ fulfillmentStatus: 'processing' }] }, 'ineligible'],
+    ['uncaptured', { payment: { method: 'razorpay', status: 'pending', razorpayPaymentId: paymentId } }, 'ineligible'],
+    ['invalid amount', { pricing: { totalAmount: Number.MAX_VALUE } }, 'invalid_amount'],
+    ['processing without pointer', { cancellationStatus: 'processing' }, 'inconsistent'],
+  ];
+  for (const [label, order, expected] of cases) {
+    await t.test(label, async () => {
+      const harness = makeDb(order);
+      assert.equal((await reserve(harness)).kind, expected);
+      assert.equal(harness.paths().filter((path) => path.includes('/refundAttempts/')).length, 0);
+    });
+  }
+});
+
+test('does not create a second attempt when history exists without the active pointer', async () => {
+  const harness = makeDb();
+  const first = await reserve(harness);
+  assert.equal(first.kind, 'reserved');
+  const order = harness.get(`orders/${orderId}`);
+  delete order.payment.activeRefundAttemptId;
+  order.cancellationStatus = 'failed';
+  harness.set(`orders/${orderId}`, order);
+  assert.equal((await reserve(harness)).kind, 'inconsistent');
+  assert.equal(harness.paths().filter((path) => path.includes('/refundAttempts/')).length, 1);
 });

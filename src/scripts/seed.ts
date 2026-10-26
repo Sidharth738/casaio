@@ -12,32 +12,34 @@
 
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import { generateKeyPairSync } from 'node:crypto';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
+import { assertSafeSeedEnvironment, SEED_EMULATOR_PROJECT_ID } from './seed-emulator-guard';
 
 // Load .env.local if present
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
-const projectId =
-  process.env.FIREBASE_PROJECT_ID ||
-  process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
-  'casaio-app';
+assertSafeSeedEnvironment(process.env);
 
-if (getApps().length === 0) {
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
-  if (privateKey) {
-    privateKey = privateKey.replace(/\\n/g, '\n');
-  }
-
-  if (clientEmail && privateKey) {
-    initializeApp({
-      credential: cert({ projectId, clientEmail, privateKey }),
-    });
-  } else {
-    initializeApp({ projectId });
-  }
+if (getApps().length > 0) {
+  throw new Error('Seeding requires a fresh Firebase Admin process with no preinitialized apps.');
 }
+
+const localCredential = cert({
+  projectId: SEED_EMULATOR_PROJECT_ID,
+  clientEmail: 'casaio-seed-emulator@demo-casaio-rules.invalid',
+  privateKey: generateKeyPairSync('rsa', { modulusLength: 2048 })
+    .privateKey.export({ format: 'pem', type: 'pkcs8' })
+    .toString(),
+});
+
+initializeApp({
+  projectId: SEED_EMULATOR_PROJECT_ID,
+  credential: localCredential,
+});
+
+const projectId = SEED_EMULATOR_PROJECT_ID;
 
 const db = getFirestore();
 

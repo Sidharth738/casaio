@@ -1,10 +1,28 @@
 import 'server-only';
 
 import { adminDb } from '@/lib/firebase/admin';
-import type { Product, ProductFilterParams } from '@/types';
+import type { Category, Product, ProductFilterParams } from '@/types';
 import { toPublicProduct } from '@/lib/products/public-projection';
 
 const PAGE_SIZE = 20;
+
+export async function getPublicCategories(): Promise<Category[]> {
+  const snapshot = await adminDb.collection('categories')
+    .where('isActive', '==', true)
+    .get();
+  return snapshot.docs
+    .map((document) => ({ id: document.id, ...document.data() }) as Category)
+    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+}
+
+export async function getPublicCategoryBySlug(slug: string): Promise<Category | null> {
+  const snapshot = await adminDb.collection('categories')
+    .where('slug', '==', slug)
+    .limit(1)
+    .get();
+  if (snapshot.empty) return null;
+  return { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as Category;
+}
 
 export async function getPublicProducts(): Promise<Product[]> {
   const snapshot = await adminDb.collection('products')

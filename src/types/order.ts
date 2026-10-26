@@ -19,6 +19,7 @@ export type FulfillmentStatus =
 
 export type PaymentMethod = 'razorpay' | 'cod';
 export type PaymentStatus = 'pending' | 'authorized' | 'captured' | 'failed' | 'refund_pending' | 'refund_failed' | 'refunded';
+export type CancellationStatus = 'none' | 'processing' | 'completed' | 'failed';
 
 export type RefundAttemptState =
   | 'not_submitted'
@@ -37,6 +38,15 @@ export interface RefundAttempt {
   paymentId: string;
   amount: number;
   currency: 'INR';
+  /** Immutable provider request used verbatim for every submission under this attempt. */
+  requestBody: {
+    amount: number;
+    speed: 'normal';
+    receipt: string;
+    notes: { orderId: string; reason: 'Customer cancellation' };
+  };
+  requestBodyJson: string;
+  idempotencyKey: string;
   state: RefundAttemptState;
   createdAt: string;
   updatedAt: string;
@@ -159,6 +169,7 @@ export interface Order {
   payment: OrderPayment;
   orderStatus: OrderStatus;
   cancellationReason?: string;
+  cancellationStatus?: CancellationStatus;
   statusTimeline: OrderTimelineEvent[];
   createdAt: string;
   updatedAt: string;

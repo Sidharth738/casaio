@@ -3,7 +3,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import type { Metadata } from 'next';
 import { Container } from '@/components/ui/Container';
-import { getCategories } from '@/lib/firebase/firestore';
+import { getPublicCategories } from '@/lib/firebase/server-catalog';
 import type { Category } from '@/types';
 import { Layers } from 'lucide-react';
 import { getRenderableImageUrl } from '@/lib/utils';
@@ -19,7 +19,7 @@ export const revalidate = 60;
 async function CategoriesGrid() {
   let categories: Category[] = [];
   try {
-    categories = await getCategories();
+    categories = await getPublicCategories();
   } catch {
     // Firestore unavailable during build (no credentials) — show empty state
     categories = [];

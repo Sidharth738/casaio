@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   User,
   signInWithEmailAndPassword,
@@ -14,9 +14,11 @@ import {
   updateProfile,
   sendEmailVerification,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase/client';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db, isFirebaseEmulatorMode } from '@/lib/firebase/client';
 import { UserProfile, UserRole } from '@/types/user';
+import { getVerificationDeliveryMessage, type VerificationDelivery } from '@/lib/auth/verification-delivery';
+import { createProfileBootstrapLoader, getProfileFailureCategory } from '@/lib/auth/profile-bootstrap';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -25,11 +27,11 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   loginWithEmail: (email: string, pass: string) => Promise<UserRole>;
-  registerWithEmail: (email: string, pass: string, name: string) => Promise<{ verificationEmailSent: boolean; profileSaved: boolean }>;
+  registerWithEmail: (email: string, pass: string, name: string) => Promise<{ verificationDelivery: VerificationDelivery; profileSaved: boolean }>;
   loginWithGoogle: () => Promise<UserRole>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
-  resendVerificationEmail: (email: string, password: string) => Promise<void>;
+  resendVerificationEmail: (email: string, password: string) => Promise<VerificationDelivery>;
   refreshSession: () => Promise<void>;
 }
 
@@ -42,7 +44,7 @@ function getActionCodeSettings(continuePath: string): ActionCodeSettings {
   };
 }
 
-async function sendVerificationEmail(user: User): Promise<void> {
+async function sendVerificationEmail(user: User): Promise<VerificationDelivery> {
   try {
     await sendEmailVerification(user, getActionCodeSettings('/login?verified=1'));
   } catch (error) {
@@ -53,6 +55,7 @@ async function sendVerificationEmail(user: User): Promise<void> {
     console.warn('Custom verification return URL was rejected; sending the standard Firebase verification link instead.');
     await sendEmailVerification(user);
   }
+  return isFirebaseEmulatorMode ? 'emulator' : 'email';
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -60,7 +63,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<UserProfile | null>(null);
   const [role, setRole] = useState<UserRole>('customer');
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  const emailLoginInProgress = useRef(false);
+  const authOperationInProgress = useRef(false);
+
+  const logProfileBootstrapFailure = useCallback((stage: 'session' | 'profile', error: unknown) => {
+    if (process.env.NODE_ENV === 'production') return;
+    const fallback = stage === 'session' ? 'session-failed' : 'profile-failed';
+    const category = getProfileFailureCategory(error, fallback);
+    console.warn(`Firebase ${stage} bootstrap failed (category: ${category}).`);
+  }, []);
 
   // Sync token with server session cookie
   const syncServerSession = useCallback(async (fbUser: User | null) => {
@@ -101,62 +111,69 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const userDocRef = doc(db, 'users', fbUser.uid);
     const userDoc = await getDoc(userDocRef);
 
-    if (userDoc.exists()) {
-      const data = userDoc.data() as UserProfile;
-      return {
-        ...data,
-        uid: fbUser.uid,
-        email: fbUser.email || data.email,
-        displayName: data.displayName || fbUser.displayName || 'Customer',
-        photoURL: fbUser.photoURL || data.photoURL || null,
-        role: data.role || 'customer',
-        status: data.status || 'active',
-      };
+    if (!userDoc.exists()) {
+      throw Object.assign(new Error('The authenticated user profile was not initialized.'), {
+        code: 'profile-missing',
+      });
     }
 
-    // Initialize new profile document
-    const now = new Date().toISOString();
-    const newProfile: UserProfile = {
+    const data = userDoc.data() as UserProfile;
+    return {
+      ...data,
       uid: fbUser.uid,
-      email: fbUser.email || '',
-      displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'Customer',
-      photoURL: fbUser.photoURL || null,
-      role: 'customer',
-      status: 'active',
-      createdAt: now,
-      updatedAt: now,
+      email: fbUser.email || data.email,
+      displayName: data.displayName || fbUser.displayName || 'Customer',
+      photoURL: fbUser.photoURL || data.photoURL || null,
+      role: data.role || 'customer',
+      status: data.status || 'active',
     };
-
-    await setDoc(userDocRef, newProfile);
-    return newProfile;
   }, []);
+
+  // The verified session route is the sole profile-bootstrap authority. It
+  // verifies the token and creates a missing profile with the Admin SDK before
+  // the client reads it. Concurrent callers for the same UID share this work.
+  const loadAuthenticatedProfile = useMemo(() => createProfileBootstrapLoader(
+    async (fbUser: User) => {
+      try {
+        await establishSession(fbUser);
+      } catch (error) {
+        logProfileBootstrapFailure('session', error);
+        if ((error as { code?: string })?.code === 'auth/email-not-verified') throw error;
+        throw Object.assign(new Error('Could not establish a secure session.'), {
+          code: 'auth/session-creation-failed',
+          failureCategory: getProfileFailureCategory(error, 'session-failed'),
+        });
+      }
+    },
+    async (fbUser: User) => {
+      try {
+        return await fetchUserProfile(fbUser);
+      } catch (error) {
+        logProfileBootstrapFailure('profile', error);
+        throw Object.assign(new Error('Could not load the authenticated user profile.'), {
+          code: 'auth/profile-initialization-failed',
+          failureCategory: getProfileFailureCategory(error, 'profile-failed'),
+        });
+      }
+    },
+  ), [establishSession, fetchUserProfile, logProfileBootstrapFailure]);
 
   // Listen to Auth State changes
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+      if (authOperationInProgress.current) return;
       setIsLoading(true);
       if (fbUser) {
-        const isUnverifiedPasswordUser =
-          !fbUser.emailVerified && fbUser.providerData.some((provider) => provider.providerId === 'password');
-        if (isUnverifiedPasswordUser && emailLoginInProgress.current) {
-          // The login action is checking this account against its trusted
-          // server-side profile; avoid racing it by signing out here.
-          setIsLoading(false);
-          return;
-        }
         setFirebaseUser(fbUser);
         try {
-          // The server decides whether an unverified password user has an
-          // existing admin profile. This also establishes the session cookie.
-          if (isUnverifiedPasswordUser) await syncServerSession(fbUser);
-          const profile = await fetchUserProfile(fbUser);
+          // The server enforces email verification and bootstraps missing
+          // profiles before this client performs its read.
+          const profile = await loadAuthenticatedProfile(fbUser);
           setUser(profile);
           setRole(profile.role);
-          if (!isUnverifiedPasswordUser) await syncServerSession(fbUser);
-        } catch (error) {
-          // Session service configuration/network failures are recoverable and
-          // should be shown by the login form, not promoted to Next's error overlay.
-          console.warn('Unable to initialize the signed-in session:', error);
+        } catch {
+          // Keep authentication failures out of the Next error overlay. Only a
+          // safe category is logged by the bootstrap callbacks above.
           setUser(null);
           setFirebaseUser(null);
           setRole('customer');
@@ -164,7 +181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             await signOut(auth);
             await syncServerSession(null);
           } catch (clearError) {
-            console.error('Unable to clear rejected authentication state:', clearError);
+            logProfileBootstrapFailure('session', clearError);
           }
         }
       } else {
@@ -174,25 +191,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           await syncServerSession(null);
         } catch (error) {
-          console.error('Error clearing server session:', error);
+            logProfileBootstrapFailure('session', error);
         }
       }
       setIsLoading(false);
     });
 
     return () => unsubscribe();
-  }, [fetchUserProfile, syncServerSession]);
+  }, [loadAuthenticatedProfile, logProfileBootstrapFailure, syncServerSession]);
 
   const loginWithEmail = async (email: string, pass: string) => {
     setIsLoading(true);
-    emailLoginInProgress.current = true;
+    authOperationInProgress.current = true;
     try {
       const cred = await signInWithEmailAndPassword(auth, email, pass);
       if (!cred.user.emailVerified) {
         try {
-          const session = await syncServerSession(cred.user);
-          const profile = await fetchUserProfile(cred.user);
-          if (session?.user.role !== 'admin' || profile.role !== 'admin') {
+          const profile = await loadAuthenticatedProfile(cred.user);
+          if (profile.role !== 'admin') {
             throw Object.assign(new Error('Verify your email before signing in.'), { code: 'auth/email-not-verified' });
           }
           setUser(profile);
@@ -206,20 +222,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.error('Unable to clear rejected login session:', clearError);
           }
           if (code === 'auth/email-not-verified') {
-            let verificationEmailSent = false;
+            let verificationDelivery: VerificationDelivery = 'failed';
             try {
-              await sendVerificationEmail(cred.user);
-              verificationEmailSent = true;
+              verificationDelivery = await sendVerificationEmail(cred.user);
             } catch (emailError) {
               console.error('Unable to send verification email:', emailError);
             }
             const error = new Error(
-              verificationEmailSent
-                ? 'Your email is not verified yet. We sent a fresh verification link; check your inbox and spam folder.'
-                : 'Your email is not verified yet. We could not send a verification link, but you can try resending it below.'
-            ) as Error & { code: string; verificationEmailSent: boolean };
+              `Your email is not verified yet. ${getVerificationDeliveryMessage(verificationDelivery)}`
+            ) as Error & { code: string; verificationDelivery: VerificationDelivery };
             error.code = 'auth/email-not-verified';
-            error.verificationEmailSent = verificationEmailSent;
+            error.verificationDelivery = verificationDelivery;
             throw error;
           }
           const error = new Error('Your credentials are valid, but we could not establish your secure session. Please try again.') as Error & { code: string; cause?: unknown };
@@ -230,26 +243,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       let profile: UserProfile;
       try {
-        profile = await fetchUserProfile(cred.user);
+        profile = await loadAuthenticatedProfile(cred.user);
       } catch (cause) {
-        const error = new Error('Your credentials are valid, but we could not load your user profile. Please try again.') as Error & { code: string; cause?: unknown };
-        error.code = 'auth/profile-initialization-failed';
-        error.cause = cause;
+        await signOut(auth).catch(() => undefined);
+        await syncServerSession(null).catch((error: unknown) => logProfileBootstrapFailure('session', error));
+        const sessionFailure = (cause as { code?: string })?.code === 'auth/session-creation-failed';
+        const error = new Error(sessionFailure
+          ? 'Your credentials are valid, but we could not establish your secure session. Please try again.'
+          : 'Your credentials are valid, but we could not load your user profile. Please try again.') as Error & { code: string };
+        error.code = sessionFailure ? 'auth/session-creation-failed' : 'auth/profile-initialization-failed';
         throw error;
       }
       setUser(profile);
       setRole(profile.role);
-      try {
-        await establishSession(cred.user);
-      } catch (cause) {
-        const error = new Error('Your credentials are valid, but we could not establish your secure session. Please try again.') as Error & { code: string; cause?: unknown };
-        error.code = 'auth/session-creation-failed';
-        error.cause = cause;
-        throw error;
-      }
       return profile.role;
     } finally {
-      emailLoginInProgress.current = false;
+      authOperationInProgress.current = false;
       setIsLoading(false);
     }
   };
@@ -258,8 +267,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     email: string,
     pass: string,
     displayName: string
-  ): Promise<{ verificationEmailSent: boolean; profileSaved: boolean }> => {
+  ): Promise<{ verificationDelivery: VerificationDelivery; profileSaved: boolean }> => {
     setIsLoading(true);
+    authOperationInProgress.current = true;
     try {
       // This is the only step that determines whether registration itself failed.
       const cred = await createUserWithEmailAndPassword(auth, email, pass);
@@ -274,11 +284,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Account created, but the Firebase display name could not be saved:', error);
       }
 
-      let verificationEmailSent = true;
+      let verificationDelivery: VerificationDelivery = 'failed';
       try {
-        await sendVerificationEmail(cred.user);
+        verificationDelivery = await sendVerificationEmail(cred.user);
       } catch (error) {
-        verificationEmailSent = false;
         console.error('Account created, but the verification email could not be sent:', error);
       }
 
@@ -293,38 +302,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Account created, but the temporary registration session could not be cleared:', error);
       }
 
-      return { verificationEmailSent, profileSaved };
+      return { verificationDelivery, profileSaved };
     } finally {
+      authOperationInProgress.current = false;
       setIsLoading(false);
     }
   };
 
   const loginWithGoogle = async () => {
     setIsLoading(true);
+    authOperationInProgress.current = true;
     try {
       const provider = new GoogleAuthProvider();
       const cred = await signInWithPopup(auth, provider);
       let profile: UserProfile;
       try {
-        profile = await fetchUserProfile(cred.user);
+        profile = await loadAuthenticatedProfile(cred.user);
       } catch (cause) {
-        const error = new Error('Google sign-in succeeded, but we could not load your user profile. Please try again.') as Error & { code: string; cause?: unknown };
-        error.code = 'auth/profile-initialization-failed';
-        error.cause = cause;
+        await signOut(auth).catch(() => undefined);
+        await syncServerSession(null).catch((error: unknown) => logProfileBootstrapFailure('session', error));
+        const sessionFailure = (cause as { code?: string })?.code === 'auth/session-creation-failed';
+        const error = new Error(sessionFailure
+          ? 'Google sign-in succeeded, but we could not establish your secure session. Please try again.'
+          : 'Google sign-in succeeded, but we could not load your user profile. Please try again.') as Error & { code: string; cause?: unknown };
+        error.code = sessionFailure ? 'auth/session-creation-failed' : 'auth/profile-initialization-failed';
+        error.cause = getProfileFailureCategory(cause, 'profile-failed');
         throw error;
       }
       setUser(profile);
       setRole(profile.role);
-      try {
-        await establishSession(cred.user);
-      } catch (cause) {
-        const error = new Error('Google sign-in succeeded, but we could not establish your secure session. Please try again.') as Error & { code: string; cause?: unknown };
-        error.code = 'auth/session-creation-failed';
-        error.cause = cause;
-        throw error;
-      }
       return profile.role;
     } finally {
+      authOperationInProgress.current = false;
       setIsLoading(false);
     }
   };
@@ -346,8 +355,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await sendPasswordResetEmail(auth, email.trim(), getActionCodeSettings('/login'));
   };
 
-  const resendVerificationEmail = async (email: string, password: string) => {
-    emailLoginInProgress.current = true;
+  const resendVerificationEmail = async (email: string, password: string): Promise<VerificationDelivery> => {
+    authOperationInProgress.current = true;
     let signedInForResend = false;
     try {
       const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
@@ -357,22 +366,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           code: 'auth/email-already-verified',
         });
       }
-      await sendVerificationEmail(credential.user);
+      return await sendVerificationEmail(credential.user);
     } finally {
       try {
         if (signedInForResend && auth.currentUser) await signOut(auth);
       } finally {
-        emailLoginInProgress.current = false;
+        authOperationInProgress.current = false;
       }
     }
   };
 
   const refreshSession = async () => {
     if (firebaseUser) {
-      const profile = await fetchUserProfile(firebaseUser);
+      const profile = await loadAuthenticatedProfile(firebaseUser);
       setUser(profile);
       setRole(profile.role);
-      await syncServerSession(firebaseUser);
     }
   };
 

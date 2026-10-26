@@ -10,6 +10,7 @@ import { rupeesToPaise } from '@/lib/orders/money';
 import { buildCancellationInventoryUpdates } from '@/lib/orders/cancellation-inventory';
 import type { OrderItem } from '@/types';
 import { stageOnlineReservationConsumed } from '@/lib/coupons/user-usage';
+import { getRefundAttemptRef, isRefundAttempt, transitionRefundAttempt } from '@/lib/payment/refund-attempts';
 
 export const runtime = 'nodejs';
 
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
       event?: string;
       payload?: {
         payment?: { entity?: { id?: string; order_id?: string; amount?: number; currency?: string; status?: string; error_description?: string } };
-        refund?: { entity?: { id?: string; payment_id?: string; status?: string } };
+        refund?: { entity?: { id?: string; payment_id?: string; amount?: number; currency?: string; status?: string; receipt?: string; notes?: { orderId?: string } } };
       };
     };
 
@@ -55,6 +56,74 @@ export async function POST(request: NextRequest) {
         .get();
       const order = matchingOrders.docs[0];
       if (!order) return NextResponse.json({ received: true });
+
+      const orderData = order.data();
+      const activeAttemptId = orderData.payment?.activeRefundAttemptId;
+      if (typeof activeAttemptId === 'string' && activeAttemptId.length > 0) {
+        const attemptRef = getRefundAttemptRef(adminDb, order.id, activeAttemptId);
+        const attemptSnapshot = await attemptRef.get();
+        const attempt = attemptSnapshot.data();
+        if (!attemptSnapshot.exists || !isRefundAttempt(attempt) || attempt.id !== activeAttemptId ||
+            attempt.orderId !== order.id || attempt.paymentId !== refund.payment_id ||
+            orderData.payment?.razorpayPaymentId !== refund.payment_id) {
+          return orderData.cancellationStatus === 'processing'
+            ? NextResponse.json({ error: 'Refund attempt is being reconciled; retry delivery' }, { status: 503 })
+            : NextResponse.json({ received: true });
+        }
+
+        // Do not correlate an early webhook using caller-controlled receipt or notes.
+        // The cancellation transaction must first persist the exact provider refund ID.
+        if (!orderData.payment?.razorpayRefundId) {
+          return orderData.cancellationStatus === 'processing'
+            ? NextResponse.json({ error: 'Refund is being registered; retry delivery' }, { status: 503 })
+            : NextResponse.json({ received: true });
+        }
+        if (orderData.payment.razorpayRefundId !== refund.id) return NextResponse.json({ received: true });
+        if (typeof refund.amount !== 'number' || !Number.isSafeInteger(refund.amount) || refund.currency !== 'INR') {
+          return NextResponse.json({ error: 'Refund provider data does not match the attempt' }, { status: 409 });
+        }
+
+        const evidence = {
+          orderId: order.id,
+          paymentId: refund.payment_id,
+          amount: refund.amount,
+          currency: refund.currency,
+          refundId: refund.id,
+          status: expectedRefundStatus,
+          ...(refund.receipt ? { receipt: refund.receipt } : {}),
+          ...(refund.notes?.orderId ? { orderNote: refund.notes.orderId } : {}),
+        } as const;
+        const transition = await transitionRefundAttempt(
+          order.id,
+          activeAttemptId,
+          event.event === 'refund.processed' ? 'succeeded' : 'failed',
+          evidence,
+        );
+        if (transition.kind === 'reconciliation_required') {
+          return NextResponse.json({ error: 'Refund recorded; cancellation inventory needs reconciliation' }, { status: 500 });
+        }
+        if (transition.kind === 'invalid_evidence' || transition.kind === 'conflict' || transition.kind === 'inconsistent') {
+          return NextResponse.json({ error: 'Refund does not match the active attempt' }, { status: 409 });
+        }
+        if (transition.kind === 'not_found') {
+          return orderData.cancellationStatus === 'processing'
+            ? NextResponse.json({ error: 'Refund attempt is being reconciled; retry delivery' }, { status: 503 })
+            : NextResponse.json({ received: true });
+        }
+        if (transition.kind === 'invalid_transition' && transition.state !== 'succeeded' && transition.state !== 'failed') {
+          return NextResponse.json({ error: 'Refund attempt state needs reconciliation; retry delivery' }, { status: 503 });
+        }
+        // Same-state duplicates and late opposite terminal events are acknowledged
+        // without changing the already-final attempt or order state.
+        return NextResponse.json({ received: true });
+      }
+
+      // Keep the legacy path available only for orders that predate durable
+      // attempts. A missing/stale pointer must not bypass an attempt in history.
+      const attemptHistory = await adminDb.collection('orders').doc(order.id).collection('refundAttempts').get();
+      if (!attemptHistory.empty) {
+        return NextResponse.json({ error: 'Refund attempt mapping needs reconciliation; retry delivery' }, { status: 503 });
+      }
 
       const now = new Date().toISOString();
       const refundResult = await adminDb.runTransaction(async (transaction) => {

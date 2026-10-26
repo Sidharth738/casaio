@@ -21,6 +21,7 @@ import {
   Lock,
   MessageSquare,
   LogOut,
+  RotateCcw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Logo } from '@/components/common/Logo';
@@ -98,6 +99,7 @@ export default function AdminPortalLayout({
     { label: 'Products', href: '/admin/products', icon: Package },
     { label: 'Categories', href: '/admin/categories', icon: Layers },
     { label: 'Orders', href: '/admin/orders', icon: ShoppingBag },
+    { label: 'Refunds', href: '/admin/refunds', icon: RotateCcw },
     { label: 'Coupons', href: '/admin/coupons', icon: Tag },
     { label: 'Reviews', href: '/admin/reviews', icon: MessageSquare },
     { label: 'Users', href: '/admin/users', icon: Users },

@@ -6,9 +6,9 @@ import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { Container } from '@/components/ui/Container';
 import { formatCurrency, getRenderableImageUrl } from '@/lib/utils';
-import { getCategories } from '@/lib/firebase/firestore';
-import { getPublicProductPage } from '@/lib/firebase/server-catalog';
+import { getPublicCategories, getPublicProductPage } from '@/lib/firebase/server-catalog';
 import type { Category, Product } from '@/types';
+import { SafeProductImage } from '@/components/product/SafeProductImage';
 import {
   ArrowRight,
   Sparkles,
@@ -50,7 +50,7 @@ export default async function HomePage() {
 
   let activeCategories: Category[] = [];
   try {
-    activeCategories = await getCategories();
+    activeCategories = await getPublicCategories();
   } catch {
     // Keep the curated fallback while Firestore is unavailable.
   }
@@ -69,7 +69,7 @@ export default async function HomePage() {
   } catch {
     // Keep the curated fallback while Firestore is unavailable.
   }
-  const showcaseProducts = activeProducts.slice(0, 8).map((product, index) => ({
+  const showcaseProducts = activeProducts.slice(0, 8).map((product) => ({
         id: product.id,
         slug: product.slug,
         title: product.title,
@@ -80,8 +80,7 @@ export default async function HomePage() {
         rating: product.ratings?.average ?? 0,
         reviewsCount: product.ratings?.count ?? 0,
         badge: product.isFeatured ? 'Featured' : 'New Arrival',
-        imageUrl: getRenderableImageUrl(product.images.find((image) => image.isPrimary)?.url || product.images[0]?.url)
-          || fallbackCategories[index % fallbackCategories.length].imageUrl,
+        imageUrl: product.images.find((image) => image.isPrimary)?.url || product.images[0]?.url || '',
       }));
 
   return (
@@ -241,10 +240,9 @@ export default async function HomePage() {
             {showcaseProducts.length > 0 ? showcaseProducts.map((product) => (
               <Card key={product.id} hoverEffect className="flex flex-col overflow-hidden group">
                 <div className="relative aspect-4/3 overflow-hidden bg-zinc-100">
-                  <Image
+                  <SafeProductImage
                     src={product.imageUrl}
                     alt={product.title}
-                    fill
                     sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
                     className="object-cover transition-transform duration-500 group-hover:scale-105"
                   />
