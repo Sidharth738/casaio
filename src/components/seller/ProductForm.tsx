@@ -13,8 +13,6 @@ import { getCategories } from '@/lib/firebase/firestore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { SafeProductImage } from '@/components/product/SafeProductImage';
-import { useAuth } from '@/hooks/useAuth';
-import { getSafeStorageFileName, uploadCasaioImage } from '@/lib/firebase/storage-upload';
 
 interface ProductFormProps {
   initialProduct?: Product | null;
@@ -32,7 +30,6 @@ export const ProductForm: React.FC<ProductFormProps> = ({
   cancelHref = '/seller/products',
 }) => {
   const router = useRouter();
-  const { user } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
 
   // Form Fields
@@ -100,17 +97,21 @@ export const ProductForm: React.FC<ProductFormProps> = ({
 
   // Image manipulation
   const handleImageUpload = async (file: File | undefined) => {
-    if (!file || !user) return;
+    if (!file) return;
     try {
       setIsUploadingImage(true);
       setErrors((current) => ({ ...current, image: '' }));
-      const path = `products/${user.uid}/${Date.now()}-${getSafeStorageFileName(file.name)}`;
-      const url = await uploadCasaioImage(file, path);
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch('/api/telegram/upload', { method: 'POST', body: formData });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not upload the media to Telegram.');
       setImages((current) => [
         ...current,
         {
-          url,
-          path,
+          url: result.url,
+          path: result.fileId,
+          mediaType: result.mediaType,
           altText: title || 'Product view',
           isPrimary: current.length === 0,
         },
@@ -291,7 +292,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({
                 img.isPrimary ? 'border-orange-600 ring-2 ring-orange-600/20' : 'border-zinc-200'
               }`}
             >
-              {img.url.match(/\.(mp4|mov|webm|m4v)(\?|$)/i) ? (
+              {img.mediaType === 'video' ? (
                 <video
                   src={img.url}
                   className="w-full h-full object-cover"

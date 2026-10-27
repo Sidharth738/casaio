@@ -2,7 +2,8 @@ export type ProductStatus = 'draft' | 'active' | 'out_of_stock' | 'archived';
 
 export interface ProductImage {
   url: string;
-  path: string; // Storage path
+  path: string; // Telegram file_id
+  mediaType?: 'image' | 'video';
   altText?: string;
   isPrimary: boolean;
 }

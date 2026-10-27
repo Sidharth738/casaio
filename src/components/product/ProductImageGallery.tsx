@@ -41,7 +41,9 @@ export function ProductImageGallery({ images, title }: Props) {
     <div className="space-y-3">
       {/* Main image */}
       <div className="relative aspect-square rounded-2xl overflow-hidden bg-zinc-100 border border-zinc-200">
-        {showActiveImage && activeSource ? (
+        {active.mediaType === 'video' && activeSource ? (
+          <video src={activeSource} controls className="absolute inset-0 w-full h-full object-cover" />
+        ) : showActiveImage && activeSource ? (
           <Image
             src={activeSource}
             alt={active.altText ?? title}
@@ -93,7 +95,9 @@ export function ProductImageGallery({ images, title }: Props) {
                 )}
                 aria-label={`View image ${idx + 1}`}
               >
-                {source && !failedSources.has(source) ? (
+                {img.mediaType === 'video' && source ? (
+                  <video src={source} muted playsInline className="w-full h-full object-cover" />
+                ) : source && !failedSources.has(source) ? (
                   <Image
                     src={source}
                     alt={img.altText ?? `${title} ${idx + 1}`}

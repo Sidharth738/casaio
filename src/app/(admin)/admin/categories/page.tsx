@@ -19,7 +19,6 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { getRenderableImageUrl } from '@/lib/utils';
-import { getSafeStorageFileName, uploadCasaioImage } from '@/lib/firebase/storage-upload';
 
 export default function AdminCategoriesPage() {
   const { user } = useAuth();
@@ -125,11 +124,12 @@ export default function AdminCategoriesPage() {
     try {
       setIsUploadingImage(true);
       setError(null);
-      const url = await uploadCasaioImage(
-        file,
-        `categories/${user.uid}/${Date.now()}-${getSafeStorageFileName(file.name)}`,
-      );
-      setImageUrl(url);
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch('/api/telegram/upload', { method: 'POST', body: formData });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not upload the category image to Telegram.');
+      setImageUrl(result.url);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Could not upload the category image.');
     } finally {
