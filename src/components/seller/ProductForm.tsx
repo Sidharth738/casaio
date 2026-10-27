@@ -3,16 +3,18 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  Plus,
   Trash2,
   Check,
   Star,
+  Upload,
 } from 'lucide-react';
 import type { Product, Category, ProductImage } from '@/types';
 import { getCategories } from '@/lib/firebase/firestore';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { SafeProductImage } from '@/components/product/SafeProductImage';
+import { useAuth } from '@/hooks/useAuth';
+import { getSafeStorageFileName, uploadCasaioImage } from '@/lib/firebase/storage-upload';
 
 interface ProductFormProps {
   initialProduct?: Product | null;
@@ -30,6 +32,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({
   cancelHref = '/seller/products',
 }) => {
   const router = useRouter();
+  const { user } = useAuth();
   const [categories, setCategories] = useState<Category[]>([]);
 
   // Form Fields
@@ -60,17 +63,8 @@ export const ProductForm: React.FC<ProductFormProps> = ({
   );
 
   // Images state
-  const [images, setImages] = useState<ProductImage[]>(
-    initialProduct?.images || [
-      {
-        url: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&q=80&w=1000',
-        path: 'products/placeholder.jpg',
-        altText: 'Primary image',
-        isPrimary: true,
-      },
-    ]
-  );
-  const [newImageUrl, setNewImageUrl] = useState('');
+  const [images, setImages] = useState<ProductImage[]>(initialProduct?.images || []);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Auto-generate slug from title if new product
@@ -105,20 +99,29 @@ export const ProductForm: React.FC<ProductFormProps> = ({
   }, [categoryId]);
 
   // Image manipulation
-  const handleAddImage = () => {
-    if (!newImageUrl.trim()) return;
+  const handleImageUpload = async (file: File | undefined) => {
+    if (!file || !user) return;
     try {
-      new URL(newImageUrl.trim());
-      const newImg: ProductImage = {
-        url: newImageUrl.trim(),
-        path: `products/img-${Date.now()}.jpg`,
-        altText: title || 'Product view',
-        isPrimary: images.length === 0,
-      };
-      setImages([...images, newImg]);
-      setNewImageUrl('');
-    } catch {
-      setErrors({ ...errors, image: 'Please enter a valid image URL' });
+      setIsUploadingImage(true);
+      setErrors((current) => ({ ...current, image: '' }));
+      const path = `products/${user.uid}/${Date.now()}-${getSafeStorageFileName(file.name)}`;
+      const url = await uploadCasaioImage(file, path);
+      setImages((current) => [
+        ...current,
+        {
+          url,
+          path,
+          altText: title || 'Product view',
+          isPrimary: current.length === 0,
+        },
+      ]);
+    } catch (err: unknown) {
+      setErrors((current) => ({
+        ...current,
+        image: err instanceof Error ? err.message : 'Could not upload the product image.',
+      }));
+    } finally {
+      setIsUploadingImage(false);
     }
   };
 
@@ -269,7 +272,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({
           <div>
             <h3 className="font-serif font-bold text-lg text-zinc-950">Product Photography</h3>
             <p className="text-xs text-zinc-500 mt-0.5">
-              Add high-resolution URLs representing your atelier dropship inventory.
+              Select high-resolution images from your device for this product.
             </p>
           </div>
           <span className="text-xs font-mono text-zinc-400">{images.length} images</span>
@@ -320,24 +323,20 @@ export const ProductForm: React.FC<ProductFormProps> = ({
           ))}
         </div>
 
-        {/* Add Image URL bar */}
-        <div className="flex gap-2 pt-2">
+        {/* Add Image Upload */}
+        <div className="flex items-center gap-3 pt-2">
           <Input
-            placeholder="Paste public image URL (e.g. Unsplash, Cloudinary, AWS S3)"
-            value={newImageUrl}
-            onChange={(e) => setNewImageUrl(e.target.value)}
+            type="file"
+            accept="image/*"
+            onChange={(e) => void handleImageUpload(e.target.files?.[0])}
+            disabled={isUploadingImage}
             className="text-xs"
           />
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={handleAddImage}
-            leftIcon={<Plus className="w-3.5 h-3.5" />}
-          >
-            Add Image
-          </Button>
+          <span className="text-[11px] text-zinc-500 whitespace-nowrap">
+            {isUploadingImage ? 'Uploading…' : 'Max 5 MB'}
+          </span>
         </div>
+        {errors.image && <p className="text-xs text-rose-600 font-medium">{errors.image}</p>}
       </div>
 
       {/* 3. Pricing & Economics Card */}

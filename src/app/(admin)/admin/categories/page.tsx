@@ -10,6 +10,7 @@ import {
   Check,
   Search,
   Loader2,
+  Upload,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import type { Category } from '@/types';
@@ -18,6 +19,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
 import { getRenderableImageUrl } from '@/lib/utils';
+import { getSafeStorageFileName, uploadCasaioImage } from '@/lib/firebase/storage-upload';
 
 export default function AdminCategoriesPage() {
   const { user } = useAuth();
@@ -35,6 +37,7 @@ export default function AdminCategoriesPage() {
   const [sortOrder, setSortOrder] = useState('1');
   const [isActive, setIsActive] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loading = !isFetched && Boolean(user);
@@ -114,6 +117,23 @@ export default function AdminCategoriesPage() {
       setError(msg);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleImageUpload = async (file: File | undefined) => {
+    if (!file || !user) return;
+    try {
+      setIsUploadingImage(true);
+      setError(null);
+      const url = await uploadCasaioImage(
+        file,
+        `categories/${user.uid}/${Date.now()}-${getSafeStorageFileName(file.name)}`,
+      );
+      setImageUrl(url);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Could not upload the category image.');
+    } finally {
+      setIsUploadingImage(false);
     }
   };
 
@@ -219,10 +239,11 @@ export default function AdminCategoriesPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
-              label="Editorial Image URL"
-              placeholder="https://images.unsplash.com/..."
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
+              label="Editorial Cover Image"
+              type="file"
+              accept="image/*"
+              onChange={(e) => void handleImageUpload(e.target.files?.[0])}
+              disabled={isUploadingImage}
             />
             <Input
               label="Sort Sequence Order"
@@ -232,6 +253,10 @@ export default function AdminCategoriesPage() {
               onChange={(e) => setSortOrder(e.target.value)}
             />
           </div>
+          <p className="text-[11px] text-zinc-500 flex items-center gap-1.5">
+            <Upload className="w-3.5 h-3.5" />
+            {isUploadingImage ? 'Uploading image…' : imageUrl ? 'Image uploaded successfully.' : 'Choose an image up to 5 MB.'}
+          </p>
 
           <div>
             <label className="block text-xs font-medium text-zinc-700 mb-1.5">

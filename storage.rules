@@ -39,6 +39,13 @@ service firebase.storage {
       allow delete: if (isSeller() && request.auth.uid == sellerId || isAdmin());
     }
 
+    // Category cover images are uploaded by administrators only.
+    match /categories/{adminId}/{imageId} {
+      allow read: if true;
+      allow write: if isAdmin() && request.auth.uid == adminId && isImage() && isBelowMaxSize(5);
+      allow delete: if isAdmin() && request.auth.uid == adminId;
+    }
+
     // Review Images: Uploaded by user, public read
     match /reviews/{userId}/{imageId} {
       allow read: if true;
