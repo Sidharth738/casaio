@@ -1,5 +1,4 @@
 import React from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
@@ -16,25 +15,24 @@ export const Logo: React.FC<LogoProps> = ({
   showSubtitle = false,
   linkToHome = true,
 }) => {
-  const imageSizeClasses = {
-    sm: 'h-9 w-24',
-    md: 'h-10 w-24 sm:h-12 sm:w-[8.5rem]',
-    lg: 'h-[4.5rem] w-52',
+  const logoSizeClasses = {
+    sm: 'text-3xl',
+    md: 'text-4xl sm:text-5xl',
+    lg: 'text-6xl',
   };
 
   const content = (
     <span className={cn('inline-flex flex-col items-center select-none group', className)}>
-      <Image
-        src="/casaio-logo.png"
-        alt="Casaio"
-        width={564}
-        height={442}
-        draggable={false}
+      <span
+        role="img"
+        aria-label="Casaio"
         className={cn(
-          'object-cover object-center transition-transform duration-200 group-hover:scale-[1.02]',
-          imageSizeClasses[size]
+          'font-serif font-bold italic leading-none tracking-[-0.08em] transition-transform duration-200 group-hover:scale-[1.02]',
+          logoSizeClasses[size]
         )}
-      />
+      >
+        <span className="text-orange-600">Casa</span><span className="text-zinc-600">io</span>
+      </span>
       {showSubtitle && (
         <span className="-mt-0.5 text-[9px] uppercase font-sans tracking-[0.25em] text-zinc-500">
           Curated Living
