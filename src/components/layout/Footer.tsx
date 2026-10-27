@@ -81,28 +81,6 @@ export const Footer: React.FC = () => {
               Casaio is a premier modern e-commerce dropshipping destination curating exquisite home furnishings, artisan decor, and architectural living essentials.
             </p>
 
-            <a
-              href="https://www.instagram.com/casaio.official/"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Follow Casaio on Instagram"
-              className="inline-flex items-center gap-2 text-xs text-zinc-400 hover:text-orange-400 transition-colors"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                aria-hidden="true"
-              >
-                <rect x="3" y="3" width="18" height="18" rx="5" />
-                <circle cx="12" cy="12" r="4" />
-                <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
-              </svg>
-              <span>Follow Casaio on Instagram</span>
-            </a>
-            
             {/* Newsletter */}
             <div className="pt-2">
               <p className="text-xs font-semibold text-white uppercase tracking-wider mb-2">
@@ -182,12 +160,36 @@ export const Footer: React.FC = () => {
           &copy; {new Date().getFullYear()} Casaio Inc. All rights reserved. Crafted for sophisticated modern living.
         </p>
 
-        {/* Payment Badges */}
-        <div className="flex items-center gap-2 text-[10px] text-zinc-400">
+        <div className="flex items-center gap-4">
+          <a
+            href="https://www.instagram.com/casaio.official/"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Casaio on Instagram"
+            title="Casaio on Instagram"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-800 text-zinc-400 transition-colors hover:border-orange-600 hover:text-orange-400"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              aria-hidden="true"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="5" />
+              <circle cx="12" cy="12" r="4" />
+              <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
+            </svg>
+          </a>
+
+          {/* Payment Badges */}
+          <div className="flex items-center gap-2 text-[10px] text-zinc-400">
           <span className="px-2 py-1 bg-zinc-900 rounded border border-zinc-800 font-mono">Razorpay</span>
           <span className="px-2 py-1 bg-zinc-900 rounded border border-zinc-800 font-mono">UPI</span>
           <span className="px-2 py-1 bg-zinc-900 rounded border border-zinc-800 font-mono">Cards</span>
           <span className="px-2 py-1 bg-zinc-900 rounded border border-zinc-800 font-mono">Cash on Delivery</span>
+          </div>
         </div>
       </div>
     </footer>
