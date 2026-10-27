@@ -153,13 +153,12 @@ export const Footer: React.FC = () => {
               href="https://www.instagram.com/casaio.official/"
               target="_blank"
               rel="noopener noreferrer"
-              aria-label="Casaio on Instagram"
-              title="Casaio on Instagram"
-              className="mt-8 inline-flex h-8 w-8 items-center justify-center rounded-full border border-zinc-800 text-zinc-400 transition-colors hover:border-orange-600 hover:text-orange-400"
+              aria-label="Follow Casaio on Instagram"
+              className="mt-8 inline-flex items-center gap-2 text-xs text-zinc-400 transition-colors hover:text-orange-400"
             >
               <svg
                 viewBox="0 0 24 24"
-                className="h-4 w-4"
+                className="h-4 w-4 shrink-0"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="1.8"
@@ -169,6 +168,7 @@ export const Footer: React.FC = () => {
                 <circle cx="12" cy="12" r="4" />
                 <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
               </svg>
+              <span>Follow Casaio on Instagram</span>
             </a>
           </div>
 
