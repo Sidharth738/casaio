@@ -11,14 +11,14 @@ export const CategorySchema = z.object({
 });
 
 export const ProductImageSchema = z.object({
-  url: z.string().url(),
+  url: z.string().refine((value) => value.startsWith('/') || /^https?:\/\//.test(value), 'Must be a valid media URL'),
   path: z.string(),
   altText: z.string().max(200).optional(),
   isPrimary: z.boolean(),
 });
 
 const SellerProductImageSchema = z.object({
-  url: z.string().url().regex(/^https?:\/\//),
+  url: z.string().refine((value) => value.startsWith('/') || /^https?:\/\//.test(value), 'Must be a valid media URL'),
   path: z.string(),
   altText: z.string().max(200).optional(),
   isPrimary: z.boolean(),
