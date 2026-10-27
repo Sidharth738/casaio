@@ -272,7 +272,7 @@ export const ProductForm: React.FC<ProductFormProps> = ({
           <div>
             <h3 className="font-serif font-bold text-lg text-zinc-950">Product Photography</h3>
             <p className="text-xs text-zinc-500 mt-0.5">
-              Select high-resolution images from your device for this product.
+              Select product images or videos from your device.
             </p>
           </div>
           <span className="text-xs font-mono text-zinc-400">{images.length} images</span>
@@ -291,7 +291,17 @@ export const ProductForm: React.FC<ProductFormProps> = ({
                 img.isPrimary ? 'border-orange-600 ring-2 ring-orange-600/20' : 'border-zinc-200'
               }`}
             >
-              <SafeProductImage src={img.url} alt={img.altText || 'Thumbnail'} sizes="150px" />
+              {img.url.match(/\.(mp4|mov|webm|m4v)(\?|$)/i) ? (
+                <video
+                  src={img.url}
+                  className="w-full h-full object-cover"
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
+              ) : (
+                <SafeProductImage src={img.url} alt={img.altText || 'Thumbnail'} sizes="150px" />
+              )}
 
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                 {!img.isPrimary && (
@@ -327,13 +337,13 @@ export const ProductForm: React.FC<ProductFormProps> = ({
         <div className="flex items-center gap-3 pt-2">
           <Input
             type="file"
-            accept="image/*"
+            accept="image/*,video/*"
             onChange={(e) => void handleImageUpload(e.target.files?.[0])}
             disabled={isUploadingImage}
             className="text-xs"
           />
           <span className="text-[11px] text-zinc-500 whitespace-nowrap">
-            {isUploadingImage ? 'Uploading…' : 'Max 5 MB'}
+            {isUploadingImage ? 'Uploading...' : 'Images and videos'}
           </span>
         </div>
         {errors.image && <p className="text-xs text-rose-600 font-medium">{errors.image}</p>}

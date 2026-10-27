@@ -27,6 +27,10 @@ service firebase.storage {
     function isImage() {
       return request.resource.contentType.matches('image/.*');
     }
+
+    function isMedia() {
+      return request.resource.contentType.matches('(image|video)/.*');
+    }
     
     function isBelowMaxSize(maxMegaBytes) {
       return request.resource.size <= maxMegaBytes * 1024 * 1024;
@@ -35,7 +39,7 @@ service firebase.storage {
     // Product Images: Uploaded by seller, public read
     match /products/{sellerId}/{imageId} {
       allow read: if true;
-      allow write: if (isSeller() && request.auth.uid == sellerId && isImage() && isBelowMaxSize(5) || isAdmin());
+      allow write: if (isSeller() && request.auth.uid == sellerId && isMedia() || isAdmin());
       allow delete: if (isSeller() && request.auth.uid == sellerId || isAdmin());
     }
 
