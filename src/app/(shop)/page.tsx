@@ -3,16 +3,14 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { Card } from '@/components/ui/Card';
 import { Container } from '@/components/ui/Container';
-import { formatCurrency, getRenderableImageUrl } from '@/lib/utils';
+import { getRenderableImageUrl } from '@/lib/utils';
 import { getPublicCategories, getPublicProductPage } from '@/lib/firebase/server-catalog';
 import type { Category, Product } from '@/types';
-import { SafeProductImage } from '@/components/product/SafeProductImage';
+import { ProductCard } from '@/components/product/ProductCard';
 import {
   ArrowRight,
   Sparkles,
-  Star,
   ShieldCheck,
   CheckCircle,
   TrendingUp,
@@ -69,19 +67,7 @@ export default async function HomePage() {
   } catch {
     // Keep the curated fallback while Firestore is unavailable.
   }
-  const showcaseProducts = activeProducts.slice(0, 8).map((product) => ({
-        id: product.id,
-        slug: product.slug,
-        title: product.title,
-        category: activeCategories.find((category) => category.slug === product.categorySlug)?.name || product.categorySlug,
-        seller: product.sellerStoreName,
-        price: product.price,
-        compareAtPrice: product.compareAtPrice,
-        rating: product.ratings?.average ?? 0,
-        reviewsCount: product.ratings?.count ?? 0,
-        badge: product.isFeatured ? 'Featured' : 'New Arrival',
-        imageUrl: product.images.find((image) => image.isPrimary)?.url || product.images[0]?.url || '',
-      }));
+  const showcaseProducts = activeProducts.slice(0, 8);
 
   return (
     <div className="flex flex-col space-y-16 sm:space-y-24 pb-20">
@@ -238,59 +224,7 @@ export default async function HomePage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {showcaseProducts.length > 0 ? showcaseProducts.map((product) => (
-              <Card key={product.id} hoverEffect className="flex flex-col overflow-hidden group">
-                <div className="relative aspect-4/3 overflow-hidden bg-zinc-100">
-                  <SafeProductImage
-                    src={product.imageUrl}
-                    alt={product.title}
-                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
-                    className="object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  <div className="absolute top-3 left-3 z-10">
-                    <Badge variant="accent" size="sm">
-                      {product.badge}
-                    </Badge>
-                  </div>
-                </div>
-
-                <div className="p-4 flex flex-col flex-1">
-                  <div className="flex items-center justify-between text-[11px] text-zinc-500 mb-1">
-                    <span className="uppercase tracking-wider">{product.category}</span>
-                    <span className="text-zinc-600 font-medium">By {product.seller}</span>
-                  </div>
-
-                  <h3 className="font-serif font-bold text-base text-zinc-900 group-hover:text-orange-700 transition-colors line-clamp-1">
-                    {product.title}
-                  </h3>
-
-                  <div className="flex items-center gap-1.5 my-2">
-                    <div className="flex items-center text-orange-500">
-                      <Star className="w-3.5 h-3.5 fill-orange-500 text-orange-500" />
-                    </div>
-                    <span className="text-xs font-semibold text-zinc-800">{product.rating}</span>
-                    <span className="text-[11px] text-zinc-400">({product.reviewsCount})</span>
-                  </div>
-
-                  <div className="mt-auto pt-3 border-t border-zinc-100 flex items-center justify-between">
-                    <div>
-                      <span className="font-serif font-bold text-base text-zinc-950">
-                        {formatCurrency(product.price)}
-                      </span>
-                      {product.compareAtPrice && (
-                        <span className="ml-2 text-xs text-zinc-400 line-through">
-                          {formatCurrency(product.compareAtPrice)}
-                        </span>
-                      )}
-                    </div>
-                    <Link
-                      href={`/products/${product.slug}`}
-                      className="inline-flex h-8 items-center justify-center rounded-md border border-zinc-200 bg-zinc-100 px-3 text-xs font-medium text-zinc-900 transition-colors hover:bg-zinc-200"
-                    >
-                      View Piece
-                    </Link>
-                  </div>
-                </div>
-              </Card>
+              <ProductCard key={product.id} product={product} />
             )) : (
               <div className="col-span-full rounded-xl border border-zinc-200 bg-white px-6 py-12 text-center">
                 <h3 className="font-serif text-lg font-semibold text-zinc-900">New pieces are on the way</h3>
