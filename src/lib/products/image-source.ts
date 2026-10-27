@@ -19,6 +19,13 @@ export function getSafeProductImageSource(value: unknown): string | null {
   // image configuration. Protocol-relative URLs are deliberately excluded.
   if (source.startsWith('/') && !source.startsWith('//')) return source;
 
+  // Telegram uploads are stored as file IDs. Keep the bot token server-side
+  // and render the media through our proxy route instead of exposing it in a
+  // public URL.
+  if (!source.startsWith('http://') && !source.startsWith('https://')) {
+    return `/api/telegram/media?fileId=${encodeURIComponent(source)}`;
+  }
+
   try {
     const url = new URL(source);
     if (
