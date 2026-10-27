@@ -105,7 +105,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
             'absolute top-3 right-3 z-10 w-8 h-8 rounded-full border flex items-center justify-center transition-all shadow-xs',
             isWishlisted
               ? 'bg-rose-50 border-rose-200 text-rose-600 opacity-100'
-              : 'bg-white/90 border-zinc-200 text-zinc-600 hover:bg-white hover:text-rose-500 opacity-0 group-hover:opacity-100'
+              : 'bg-white/95 border-zinc-200 text-zinc-600 hover:bg-white hover:border-rose-200 hover:text-rose-500 opacity-100'
           )}
         >
           <Heart className={cn('w-4 h-4', isWishlisted && 'fill-rose-500')} />
