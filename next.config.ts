@@ -6,6 +6,12 @@ const nextConfig: NextConfig = {
   // directory and lock with a developer's existing Next.js process.
   ...(process.env.CASAIO_PLAYWRIGHT_TEST === 'true' ? { distDir: '.next/playwright' } : {}),
   images: {
+    localPatterns: [
+      {
+        pathname: '/api/telegram/media',
+        search: '?fileId=*',
+      },
+    ],
     remotePatterns: PRODUCT_IMAGE_REMOTE_HOSTS.map((hostname) => ({
       protocol: 'https' as const,
       hostname,
