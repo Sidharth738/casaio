@@ -6,6 +6,7 @@ import { Camera, Mail, MessageCircle, Send, X } from 'lucide-react';
 
 const CONTACT_EMAIL = 'casaio.official@gmail.com';
 const INSTAGRAM_URL = 'https://www.instagram.com/casaio.official/';
+const GMAIL_COMPOSE_URL = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(CONTACT_EMAIL)}`;
 
 export function ContactWidget() {
   const [open, setOpen] = useState(false);
@@ -69,7 +70,7 @@ export function ContactWidget() {
             {status === 'error' && <p role="alert" className="text-sm text-red-600">{error}</p>}
           </form>
           <div className="mt-4 flex gap-2 border-t border-zinc-100 pt-4">
-            <a href={`mailto:${CONTACT_EMAIL}`} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-zinc-200 px-3 py-2 text-xs font-medium hover:border-orange-500 hover:text-orange-600"><Mail size={14} /> Email</a>
+            <a href={GMAIL_COMPOSE_URL} target="_blank" rel="noreferrer" className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-zinc-200 px-3 py-2 text-xs font-medium hover:border-orange-500 hover:text-orange-600"><Mail size={14} /> Email</a>
             <a href={INSTAGRAM_URL} target="_blank" rel="noreferrer" className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-zinc-200 px-3 py-2 text-xs font-medium hover:border-orange-500 hover:text-orange-600"><Camera size={14} /> Instagram</a>
           </div>
         </div>
