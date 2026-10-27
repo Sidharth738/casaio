@@ -1,5 +1,4 @@
 import React from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
@@ -24,12 +23,9 @@ export const Logo: React.FC<LogoProps> = ({
 
   const content = (
     <span className={cn('inline-flex flex-col items-center select-none group', className)}>
-      <Image
+      <img
         src="/casaio-logo.png"
         alt="Casaio"
-        width={564}
-        height={442}
-        priority
         draggable={false}
         className={cn(
           'object-contain object-center transition-transform duration-200 group-hover:scale-[1.02]',
