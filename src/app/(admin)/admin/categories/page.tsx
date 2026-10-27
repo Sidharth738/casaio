@@ -82,6 +82,12 @@ export default function AdminCategoriesPage() {
       return;
     }
 
+    const normalizedImageUrl = imageUrl.trim();
+    if (normalizedImageUrl && !getRenderableImageUrl(normalizedImageUrl)) {
+      setError('Use a direct HTTPS image URL from images.unsplash.com or Firebase Storage. Unsplash photo-page URLs cannot be displayed.');
+      return;
+    }
+
     try {
       setIsSaving(true);
       setError(null);
@@ -93,7 +99,7 @@ export default function AdminCategoriesPage() {
           name: name.trim(),
           slug: slug.trim(),
           description: description.trim(),
-          imageUrl: imageUrl.trim(),
+          imageUrl: normalizedImageUrl,
           sortOrder: Number.parseInt(sortOrder, 10) || 1,
           isActive,
         }),
