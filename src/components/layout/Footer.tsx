@@ -80,6 +80,28 @@ export const Footer: React.FC = () => {
             <p className="text-xs text-zinc-400 leading-relaxed max-w-sm">
               Casaio is a premier modern e-commerce dropshipping destination curating exquisite home furnishings, artisan decor, and architectural living essentials.
             </p>
+
+            <a
+              href="https://www.instagram.com/casaio.official/"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Follow Casaio on Instagram"
+              className="inline-flex items-center gap-2 text-xs text-zinc-400 hover:text-orange-400 transition-colors"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                aria-hidden="true"
+              >
+                <rect x="3" y="3" width="18" height="18" rx="5" />
+                <circle cx="12" cy="12" r="4" />
+                <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
+              </svg>
+              <span>Follow Casaio on Instagram</span>
+            </a>
             
             {/* Newsletter */}
             <div className="pt-2">
