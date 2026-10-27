@@ -9,7 +9,6 @@ const nextConfig: NextConfig = {
     localPatterns: [
       {
         pathname: '/api/telegram/media',
-        search: '?fileId=*',
       },
     ],
     remotePatterns: PRODUCT_IMAGE_REMOTE_HOSTS.map((hostname) => ({
