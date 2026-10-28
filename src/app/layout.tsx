@@ -5,7 +5,7 @@ import { AuthProvider } from '@/context/AuthContext';
 import { WishlistProvider } from '@/context/WishlistContext';
 import { CartProvider } from '@/context/CartContext';
 import { JsonLd } from '@/components/seo/JsonLd';
-import { organizationJsonLd, SITE_DESCRIPTION, SITE_NAME, SITE_URL, websiteJsonLd } from '@/lib/seo';
+import { absoluteUrl, organizationJsonLd, SITE_DESCRIPTION, SITE_NAME, SITE_URL, websiteJsonLd } from '@/lib/seo';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -54,18 +54,28 @@ export const metadata: Metadata = {
     siteName: SITE_NAME,
     type: 'website',
     locale: 'en_IN',
+    images: [
+      {
+        url: absoluteUrl('/casaio-logo.png'),
+        width: 562,
+        height: 562,
+        alt: 'Casaio logo',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Casaio | Premium Curated Living',
     description: 'Elevate your sanctuary with timeless home furnishings and decor.',
     creator: SITE_NAME,
+    images: [absoluteUrl('/casaio-logo.png')],
   },
   alternates: {
     canonical: '/',
   },
   icons: {
-    icon: '/favicon.ico',
+    icon: [{ url: '/casaio-logo.png', type: 'image/png' }],
+    apple: '/casaio-logo.png',
   },
 };
 
