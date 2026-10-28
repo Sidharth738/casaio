@@ -16,13 +16,13 @@ export const Logo: React.FC<LogoProps> = ({
 }) => {
   const imageSizeClasses = {
     sm: 'h-10 w-28',
-    md: 'h-14 w-36 sm:h-14 sm:w-40',
+    md: 'h-10 w-28 sm:h-14 sm:w-40',
     lg: 'h-20 w-56',
   };
 
   const imageOffsetClasses = {
     sm: '-top-7',
-    md: '-top-9 sm:-top-10',
+    md: '-top-7 sm:-top-10',
     lg: '-top-[3.75rem]',
   };
 
@@ -45,7 +45,7 @@ export const Logo: React.FC<LogoProps> = ({
       </span>
       <span
         className={cn(
-          'mt-0.5 font-sans text-[7px] font-medium tracking-[0.08em] text-zinc-500',
+          'mt-0.5 font-sans text-[6px] font-medium tracking-[0.08em] text-zinc-500 sm:text-[7px]',
           size === 'sm' && 'text-[5px]',
           size === 'lg' && 'text-[9px]'
         )}
