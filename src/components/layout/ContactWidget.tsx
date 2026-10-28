@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Camera, Mail, MessageCircle, Send, X } from 'lucide-react';
 
@@ -12,6 +12,37 @@ export function ContactWidget() {
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [error, setError] = useState('');
+  const [isOverFooter, setIsOverFooter] = useState(false);
+  const floatingButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    let frame: number | null = null;
+
+    const updateSurface = () => {
+      if (frame !== null) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        const button = floatingButtonRef.current;
+        const footer = document.querySelector<HTMLElement>('[data-site-footer]');
+        if (!button || !footer) return;
+
+        const buttonRect = button.getBoundingClientRect();
+        const footerRect = footer.getBoundingClientRect();
+        const overlapsFooter = buttonRect.bottom > footerRect.top && buttonRect.top < footerRect.bottom;
+        setIsOverFooter(overlapsFooter);
+      });
+    };
+
+    updateSurface();
+    window.addEventListener('scroll', updateSurface, { passive: true });
+    window.addEventListener('resize', updateSurface);
+
+    return () => {
+      window.removeEventListener('scroll', updateSurface);
+      window.removeEventListener('resize', updateSurface);
+      if (frame !== null) window.cancelAnimationFrame(frame);
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -75,7 +106,18 @@ export function ContactWidget() {
           </div>
         </div>
       )}
-      <button type="button" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-controls="casaio-contact-panel" className="inline-flex items-center gap-2 rounded-full bg-zinc-950 px-5 py-3 text-sm font-semibold text-white shadow-xl transition hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2">
+      <button
+        ref={floatingButtonRef}
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        aria-controls="casaio-contact-panel"
+        className={`inline-flex min-h-11 items-center gap-2 rounded-full border px-5 py-3 text-sm font-semibold shadow-xl transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 ${
+          isOverFooter
+            ? 'border-white bg-white text-zinc-950 hover:bg-zinc-100'
+            : 'border-zinc-950 bg-zinc-950 text-white hover:bg-orange-600'
+        }`}
+      >
         {open ? <X size={18} /> : <MessageCircle size={18} />} Contact Us
       </button>
     </div>

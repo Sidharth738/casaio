@@ -38,7 +38,7 @@ export const Logo: React.FC<LogoProps> = ({
           className={cn(
             // The supplied square artwork has generous whitespace. This
             // window shows the original mark without scaling the whitespace.
-            'absolute left-0 max-w-none h-auto w-full transition-transform duration-200 group-hover:scale-[1.02]',
+            'absolute left-0 max-w-none h-auto w-full mix-blend-multiply transition-transform duration-200 group-hover:scale-[1.02]',
             imageOffsetClasses[size]
           )}
         />

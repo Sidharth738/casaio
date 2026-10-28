@@ -13,7 +13,7 @@ export const AnnouncementBar: React.FC = () => {
 
         <div className="w-full md:w-auto text-center flex items-center justify-center gap-2">
           <span>
-            Complimentary shipping on orders over <strong className="text-white font-semibold">₹1,499</strong>
+            Complimentary shipping available on every order
           </span>
           <span className="hidden sm:inline text-zinc-600">|</span>
           <span className="hidden sm:inline text-orange-400 font-mono tracking-wider font-semibold">

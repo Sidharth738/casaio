@@ -8,13 +8,11 @@ import {
   Truck,
   RotateCcw,
   CreditCard,
-  Mail,
-  ArrowRight,
 } from 'lucide-react';
 
 export const Footer: React.FC = () => {
   return (
-    <footer className="bg-zinc-950 text-zinc-300 border-t border-zinc-900 pt-16 pb-12 transition-colors">
+    <footer data-site-footer className="bg-zinc-950 text-zinc-300 border-t border-zinc-900 pt-16 pb-12 transition-colors">
       {/* Trust Badges */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12 border-b border-zinc-900">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -81,31 +79,6 @@ export const Footer: React.FC = () => {
               Casaio is a premier modern e-commerce dropshipping destination curating exquisite home furnishings, artisan decor, and architectural living essentials.
             </p>
 
-            {/* Newsletter */}
-            <div className="pt-2">
-              <p className="text-xs font-semibold text-white uppercase tracking-wider mb-2">
-                Join The Casaio Collective
-              </p>
-              <form onSubmit={(e) => e.preventDefault()} className="flex items-center max-w-sm">
-                <div className="relative w-full">
-                  <input
-                    type="email"
-                    placeholder="Enter your email address"
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-l-md px-3.5 py-2 text-xs text-white placeholder:text-zinc-500 focus:outline-none focus:border-orange-600 focus:ring-1 focus:ring-orange-600"
-                  />
-                  <Mail className="absolute right-3 top-2.5 w-3.5 h-3.5 text-zinc-500" />
-                </div>
-                <button
-                  type="submit"
-                  className="bg-orange-600 hover:bg-orange-700 text-white px-3.5 py-2 rounded-r-md text-xs font-semibold transition-colors flex items-center justify-center shrink-0"
-                >
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </form>
-              <p className="text-[11px] text-zinc-500 mt-1.5">
-                Exclusive drop previews, curated interior guides, and zero spam.
-              </p>
-            </div>
           </div>
 
           {/* Quick Categories */}
@@ -147,7 +120,6 @@ export const Footer: React.FC = () => {
               <li><Link href="/seller/dashboard" className="hover:text-orange-400 transition-colors">Seller Portal Login</Link></li>
               <li><Link href="/seller/guidelines" className="hover:text-orange-400 transition-colors">Supplier Standards</Link></li>
               <li><Link href="/seller/dropship-faq" className="hover:text-orange-400 transition-colors">Dropship Logistics</Link></li>
-              <li><Link href="/admin/dashboard" className="text-zinc-600 hover:text-zinc-400 transition-colors">Platform Admin</Link></li>
             </ul>
             <a
               href="https://www.instagram.com/casaio.official/"
