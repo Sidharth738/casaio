@@ -19,6 +19,23 @@ const nextConfig: NextConfig = {
       hostname,
     })),
   },
+  async headers() {
+    return [
+      {
+        // HTML must not outlive a deployment: it contains the hashed CSS and
+        // JavaScript chunk names for that deployment. Static assets remain
+        // immutable and cacheable, so this only prevents stale documents from
+        // referencing chunks that no longer exist on a device or edge cache.
+        source: '/((?!_next/static|_next/image|api/|favicon.ico).*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-store, must-revalidate',
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
