@@ -1,48 +1,29 @@
 import type { MetadataRoute } from 'next';
 import { getPublicCategories, getPublicProducts } from '@/lib/firebase/server-catalog';
+import { absoluteUrl } from '@/lib/seo';
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://casaio.app';
-
-/**
- * Dynamic sitemap covering:
- * - Static pages (home, products, categories, account pages)
- * - Dynamic category slugs from Firestore
- * - Dynamic product slugs from Firestore (first 200 for build safety)
- */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
 
   // ── Static routes ─────────────────────────────────────────────────────────
   const staticRoutes: MetadataRoute.Sitemap = [
     {
-      url: BASE_URL,
+      url: absoluteUrl('/'),
       lastModified: now,
       changeFrequency: 'daily',
       priority: 1,
     },
     {
-      url: `${BASE_URL}/products`,
+      url: absoluteUrl('/products'),
       lastModified: now,
       changeFrequency: 'daily',
       priority: 0.9,
     },
     {
-      url: `${BASE_URL}/categories`,
+      url: absoluteUrl('/categories'),
       lastModified: now,
       changeFrequency: 'weekly',
       priority: 0.8,
-    },
-    {
-      url: `${BASE_URL}/login`,
-      lastModified: now,
-      changeFrequency: 'yearly',
-      priority: 0.3,
-    },
-    {
-      url: `${BASE_URL}/register`,
-      lastModified: now,
-      changeFrequency: 'yearly',
-      priority: 0.3,
     },
   ];
 
@@ -51,7 +32,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   try {
     const categories = await getPublicCategories();
     categoryRoutes = categories.map((cat) => ({
-      url: `${BASE_URL}/categories/${cat.slug}`,
+      url: absoluteUrl(`/categories/${cat.slug}`),
       lastModified: cat.updatedAt ? new Date(cat.updatedAt) : now,
       changeFrequency: 'weekly' as const,
       priority: 0.7,
@@ -64,8 +45,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   let productRoutes: MetadataRoute.Sitemap = [];
   try {
     const products = await getPublicProducts();
-    productRoutes = products.slice(0, 20).map((product) => ({
-      url: `${BASE_URL}/products/${product.slug}`,
+    productRoutes = products.map((product) => ({
+      url: absoluteUrl(`/products/${product.slug}`),
       lastModified: product.updatedAt ? new Date(product.updatedAt) : now,
       changeFrequency: 'weekly' as const,
       priority: 0.8,

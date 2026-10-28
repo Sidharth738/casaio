@@ -9,8 +9,9 @@ import { Layers } from 'lucide-react';
 import { getRenderableImageUrl } from '@/lib/utils';
 
 export const metadata: Metadata = {
-  title: 'All Categories | Casaio',
-  description: 'Browse all curated home décor and furniture categories on Casaio.',
+  title: 'Shop Home Furniture & Decor Categories',
+  description: 'Explore curated collections of premium home furnishings, lighting, decor, and lifestyle objects.',
+  alternates: { canonical: '/categories' },
 };
 
 // Revalidate every 30 minutes — categories change infrequently

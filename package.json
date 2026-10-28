@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "seo:check": "node scripts/seo-check.mjs",
     "preflight:local": "node scripts/local-config-preflight.mjs",
     "seed": "tsx src/scripts/seed.ts",
     "test": "tsx --test src/**/*.test.*",

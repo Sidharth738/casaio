@@ -1,4 +1,6 @@
 import nodemailer from 'nodemailer';
+import { FieldValue } from 'firebase-admin/firestore';
+import { adminDb } from '@/lib/firebase/admin';
 
 const CONTACT_EMAIL = 'casaio.official@gmail.com';
 
@@ -31,11 +33,22 @@ export async function POST(request: Request) {
     return Response.json({ error: 'Your message is too long.' }, { status: 400 });
   }
 
+  const messageRef = adminDb.collection('contactMessages').doc();
+  await messageRef.set({
+    name: name || 'Not provided',
+    email,
+    message,
+    status: 'unread',
+    emailStatus: 'pending',
+    createdAt: FieldValue.serverTimestamp(),
+  });
+
   const smtpUser = process.env.CONTACT_EMAIL_USER;
   const smtpPassword = process.env.CONTACT_EMAIL_APP_PASSWORD;
 
   if (!smtpUser || !smtpPassword) {
     console.error('Contact email is not configured. Set CONTACT_EMAIL_USER and CONTACT_EMAIL_APP_PASSWORD.');
+    await messageRef.update({ emailStatus: 'failed' });
     return Response.json({ error: 'Email service is not configured yet.' }, { status: 503 });
   }
 
@@ -56,8 +69,14 @@ export async function POST(request: Request) {
       text: `Name: ${name || 'Not provided'}\nEmail: ${email}\n\nMessage:\n${message}`,
     });
 
+    await messageRef.update({
+      emailStatus: 'sent',
+      emailedAt: FieldValue.serverTimestamp(),
+    });
+
     return Response.json({ success: true });
   } catch (error) {
+    await messageRef.update({ emailStatus: 'failed' }).catch(() => {});
     console.error('Contact email delivery failed:', error instanceof Error ? error.message : 'Unknown error');
     return Response.json({ error: 'We could not send your message. Please try again.' }, { status: 502 });
   }

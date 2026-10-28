@@ -81,10 +81,8 @@ export async function POST(req: NextRequest) {
     const now = new Date().toISOString();
     const reviewData: Omit<Review, 'id'> = {
       productId,
-      orderId: verifiedOrderId,
       userId,
       userName,
-      userAvatar: userAvatar || undefined,
       rating: Math.round(numRating),
       title: title.trim(),
       comment: comment.trim(),
@@ -92,6 +90,8 @@ export async function POST(req: NextRequest) {
       isVerifiedPurchase,
       status: 'published',
       createdAt: now,
+      ...(verifiedOrderId ? { orderId: verifiedOrderId } : {}),
+      ...(userAvatar ? { userAvatar } : {}),
     };
 
     const reviewsCollection = adminDb.collection('reviews');

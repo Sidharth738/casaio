@@ -16,6 +16,7 @@ export interface Review {
   };
   status: 'published' | 'hidden' | 'pending';
   createdAt: string;
+  adminReadAt?: string;
 }
 
 export interface CreateReviewInput {

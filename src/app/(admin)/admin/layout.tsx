@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
@@ -20,6 +20,7 @@ import {
   Loader2,
   Lock,
   MessageSquare,
+  Mail,
   LogOut,
   RotateCcw,
 } from 'lucide-react';
@@ -35,6 +36,46 @@ export default function AdminPortalLayout({
   const router = useRouter();
   const { user, role, isLoading, logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [unreadMessages, setUnreadMessages] = useState(0);
+  const [unreadReviews, setUnreadReviews] = useState(0);
+
+  useEffect(() => {
+    if (!user || role !== 'admin') return;
+
+    let active = true;
+    const loadUnreadNotifications = async () => {
+      try {
+        const [messagesResponse, reviewsResponse] = await Promise.all([
+          fetch('/api/admin/contact-messages?summary=true', { cache: 'no-store' }),
+          fetch('/api/admin/reviews/notifications', { cache: 'no-store' }),
+        ]);
+        if (messagesResponse.ok) {
+          const data = await messagesResponse.json() as { unreadCount?: number };
+          if (active) setUnreadMessages(data.unreadCount || 0);
+        }
+        if (reviewsResponse.ok) {
+          const data = await reviewsResponse.json() as { unreadCount?: number };
+          if (active) setUnreadReviews(data.unreadCount || 0);
+        }
+      } catch {
+        // The navigation remains usable if the count request temporarily fails.
+      }
+    };
+
+    void loadUnreadNotifications();
+    const interval = window.setInterval(loadUnreadNotifications, 30000);
+    const onMessagesUpdated = () => { void loadUnreadNotifications(); };
+    const onReviewsUpdated = () => { void loadUnreadNotifications(); };
+    window.addEventListener('casaio:messages-updated', onMessagesUpdated);
+    window.addEventListener('casaio:reviews-updated', onReviewsUpdated);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener('casaio:messages-updated', onMessagesUpdated);
+      window.removeEventListener('casaio:reviews-updated', onReviewsUpdated);
+    };
+  }, [role, user]);
 
   const handleLogout = async () => {
     try {
@@ -102,6 +143,7 @@ export default function AdminPortalLayout({
     { label: 'Refunds', href: '/admin/refunds', icon: RotateCcw },
     { label: 'Coupons', href: '/admin/coupons', icon: Tag },
     { label: 'Reviews', href: '/admin/reviews', icon: MessageSquare },
+    { label: 'Messages', href: '/admin/messages', icon: Mail },
     { label: 'Users', href: '/admin/users', icon: Users },
   ];
 
@@ -170,6 +212,16 @@ export default function AdminPortalLayout({
               >
                 <Icon className={cn('w-3.5 h-3.5', isActive ? 'text-orange-400' : 'text-zinc-500')} />
                 <span>{item.label}</span>
+                {item.href === '/admin/messages' && unreadMessages > 0 && (
+                  <span className="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                    {unreadMessages > 99 ? '99+' : unreadMessages}
+                  </span>
+                )}
+                {item.href === '/admin/reviews' && unreadReviews > 0 && (
+                  <span className="ml-0.5 inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                    {unreadReviews > 99 ? '99+' : unreadReviews}
+                  </span>
+                )}
               </Link>
             );
           })}

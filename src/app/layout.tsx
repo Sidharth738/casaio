@@ -4,6 +4,8 @@ import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { WishlistProvider } from '@/context/WishlistContext';
 import { CartProvider } from '@/context/CartContext';
+import { JsonLd } from '@/components/seo/JsonLd';
+import { organizationJsonLd, SITE_DESCRIPTION, SITE_NAME, SITE_URL, websiteJsonLd } from '@/lib/seo';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -15,16 +17,13 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://casaio.app';
-
 export const metadata: Metadata = {
-  metadataBase: new URL(BASE_URL),
+  metadataBase: new URL(SITE_URL),
   title: {
     default: 'Casaio | Premium Curated Living & Artisan Dropshipping',
     template: '%s | Casaio',
   },
-  description:
-    'Discover curated luxury furniture, architectural lighting, and artisanal home decor directly from certified dropship creators and workshops.',
+  description: SITE_DESCRIPTION,
   keywords: [
     'Casaio',
     'luxury furniture',
@@ -35,7 +34,7 @@ export const metadata: Metadata = {
     'home furnishing India',
     'premium homeware',
   ],
-  authors: [{ name: 'Casaio', url: BASE_URL }],
+  authors: [{ name: SITE_NAME, url: SITE_URL }],
   creator: 'Casaio',
   publisher: 'Casaio',
   robots: {
@@ -51,8 +50,8 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Casaio | Premium Curated Living',
     description: 'Elevate your sanctuary with timeless home furnishings and decor.',
-    url: BASE_URL,
-    siteName: 'Casaio',
+    url: SITE_URL,
+    siteName: SITE_NAME,
     type: 'website',
     locale: 'en_IN',
   },
@@ -60,7 +59,13 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Casaio | Premium Curated Living',
     description: 'Elevate your sanctuary with timeless home furnishings and decor.',
-    creator: '@casaio',
+    creator: SITE_NAME,
+  },
+  alternates: {
+    canonical: '/',
+  },
+  icons: {
+    icon: '/favicon.ico',
   },
 };
 
@@ -78,6 +83,8 @@ export default function RootLayout({
         <AuthProvider>
           <WishlistProvider>
             <CartProvider>
+              <JsonLd data={organizationJsonLd} />
+              <JsonLd data={websiteJsonLd} />
               {children}
             </CartProvider>
           </WishlistProvider>

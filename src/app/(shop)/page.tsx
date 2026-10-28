@@ -15,6 +15,13 @@ import {
   CheckCircle,
   TrendingUp,
 } from 'lucide-react';
+import type { Metadata } from 'next';
+
+export const metadata: Metadata = {
+  title: 'Premium Curated Living & Artisan Home Decor',
+  description: 'Shop curated luxury furniture, architectural lighting, and artisanal home decor from verified workshops on Casaio.',
+  alternates: { canonical: '/' },
+};
 
 export const revalidate = 60;
 

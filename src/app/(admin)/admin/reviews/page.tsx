@@ -34,6 +34,10 @@ export default function AdminReviewsPage() {
     let mounted = true;
     if (!user) return;
 
+    void fetch('/api/admin/reviews/notifications', { method: 'POST' })
+      .then(() => window.dispatchEvent(new Event('casaio:reviews-updated')))
+      .catch(() => {});
+
     getAllReviewsAdmin()
       .then((data) => { if (mounted) setReviews(data); })
       .catch(() => {})

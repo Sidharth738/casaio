@@ -8,14 +8,17 @@ import { ProductCard } from '@/components/product/ProductCard';
 import { CategorySortSelect } from '@/components/product/CategorySortSelect';
 import { getPublicCategoryBySlug, getPublicProductPage } from '@/lib/firebase/server-catalog';
 import type { Product, Category } from '@/types';
+import { JsonLd } from '@/components/seo/JsonLd';
+import { absoluteUrl, cleanDescription } from '@/lib/seo';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
   searchParams: Promise<{ sort?: string }>;
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { slug } = await params;
+  const { sort } = await searchParams;
   let category: Category | null = null;
   try {
     category = await getPublicCategoryBySlug(slug);
@@ -23,11 +26,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     // fallback
   }
   if (!category) {
-    return { title: 'Category Not Found | Casaio' };
+    return { title: 'Category Not Found | Casaio', robots: { index: false, follow: false } };
   }
   return {
-    title: `${category.name} | Casaio`,
-    description: category.description ?? `Shop ${category.name} — premium curated pieces on Casaio.`,
+    title: `${category.name} Furniture & Decor`,
+    description: cleanDescription(category.description ?? `Shop ${category.name} furniture and decor from Casaio's curated collections.`),
+    alternates: { canonical: `/categories/${category.slug}` },
+    robots: sort ? { index: false, follow: true } : undefined,
   };
 }
 
@@ -97,6 +102,17 @@ export default async function CategoryPage({ params, searchParams }: PageProps) 
 
   return (
     <div className="py-10 sm:py-14">
+      <JsonLd
+        data={{
+          '@context': 'https://schema.org',
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: absoluteUrl('/') },
+            { '@type': 'ListItem', position: 2, name: 'Categories', item: absoluteUrl('/categories') },
+            { '@type': 'ListItem', position: 3, name: category.name, item: absoluteUrl(`/categories/${category.slug}`) },
+          ],
+        }}
+      />
       <Container>
         {/* Breadcrumb */}
         <nav className="flex items-center gap-1.5 text-xs text-zinc-500 mb-8">

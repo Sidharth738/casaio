@@ -11,6 +11,8 @@ import { ProductCard } from '@/components/product/ProductCard';
 import { ReviewsSection } from '@/components/review/ReviewsSection';
 import { getActiveProductBySlug, getRelatedPublicProducts } from '@/lib/firebase/server-catalog';
 import type { Product } from '@/types';
+import { JsonLd } from '@/components/seo/JsonLd';
+import { absoluteUrl, cleanDescription } from '@/lib/seo';
 
 interface ProductPageProps {
   params: Promise<{ slug: string }>;
@@ -28,18 +30,21 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
   if (!product) {
     return {
       title: 'Product Not Found | Casaio',
+      robots: { index: false, follow: false },
     };
   }
 
   const primaryImage = product.images.find((img) => img.isPrimary) ?? product.images[0];
 
   return {
-    title: `${product.title} | Casaio`,
-    description: product.shortDescription ?? product.description.slice(0, 160),
+    title: product.title,
+    description: cleanDescription(product.shortDescription ?? product.description),
+    alternates: { canonical: `/products/${product.slug}` },
     openGraph: {
-      title: `${product.title} | Casaio`,
-      description: product.shortDescription ?? product.description.slice(0, 160),
-      images: primaryImage ? [{ url: primaryImage.url }] : [],
+      title: product.title,
+      description: cleanDescription(product.shortDescription ?? product.description),
+      url: absoluteUrl(`/products/${product.slug}`),
+      images: primaryImage ? [{ url: primaryImage.url, alt: product.title }] : [],
     },
   };
 }
@@ -69,6 +74,42 @@ export default async function ProductDetailPage({ params }: ProductPageProps) {
 
   return (
     <div className="py-8 sm:py-12">
+      <JsonLd
+        data={{
+          '@context': 'https://schema.org',
+          '@type': 'Product',
+          name: product.title,
+          description: cleanDescription(product.description, 500),
+          image: product.images.filter((image) => image.url).map((image) => image.url),
+          sku: product.sku,
+          brand: { '@type': 'Brand', name: product.sellerStoreName },
+          offers: {
+            '@type': 'Offer',
+            url: absoluteUrl(`/products/${product.slug}`),
+            priceCurrency: 'INR',
+            price: product.price,
+            availability: product.stock > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+          },
+          ...(product.ratings.count > 0 ? {
+            aggregateRating: {
+              '@type': 'AggregateRating',
+              ratingValue: product.ratings.average,
+              reviewCount: product.ratings.count,
+            },
+          } : {}),
+        }}
+      />
+      <JsonLd
+        data={{
+          '@context': 'https://schema.org',
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: absoluteUrl('/') },
+            { '@type': 'ListItem', position: 2, name: 'Products', item: absoluteUrl('/products') },
+            { '@type': 'ListItem', position: 3, name: product.title, item: absoluteUrl(`/products/${product.slug}`) },
+          ],
+        }}
+      />
       <Container>
         {/* Breadcrumb navigation */}
         <nav className="flex items-center gap-1.5 text-xs text-zinc-500 mb-8 overflow-x-auto whitespace-nowrap">

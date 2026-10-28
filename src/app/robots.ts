@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next';
 
-const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://casaio.app';
+import { SITE_URL } from '@/lib/seo';
 
 /**
  * Robots.txt directive:
@@ -12,13 +12,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: '*',
-        allow: [
-          '/',
-          '/products',
-          '/products/',
-          '/categories',
-          '/categories/',
-        ],
+        allow: '/',
         disallow: [
           '/admin',
           '/admin/',
@@ -38,6 +32,6 @@ export default function robots(): MetadataRoute.Robots {
         ],
       },
     ],
-    sitemap: `${BASE_URL}/sitemap.xml`,
+    sitemap: `${SITE_URL}/sitemap.xml`,
   };
 }

@@ -279,6 +279,13 @@ service cloud.firestore {
       allow create, delete: if isAdmin();
     }
 
+    // Contact submissions are created by the trusted contact API and managed
+    // only by authenticated administrators.
+    match /contactMessages/{messageId} {
+      allow read, update, delete: if isAdmin();
+      allow create: if false;
+    }
+
     // =========================================================================
     // Default Deny
     // =========================================================================
