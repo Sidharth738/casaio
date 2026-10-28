@@ -24,7 +24,7 @@ export const organizationJsonLd = {
   '@id': `${SITE_URL}/#organization`,
   name: SITE_NAME,
   url: SITE_URL,
-  logo: absoluteUrl('/casaio-logo.png'),
+  logo: absoluteUrl('/casaio-logo.jpeg'),
   email: 'casaio.official@gmail.com',
   sameAs: ['https://www.instagram.com/casaio.official/'],
 };

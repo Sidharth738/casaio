@@ -8,7 +8,7 @@ const nextConfig: NextConfig = {
   images: {
     localPatterns: [
       {
-        pathname: '/casaio-logo.png',
+        pathname: '/casaio-logo.jpeg',
       },
       {
         pathname: '/api/telegram/media',

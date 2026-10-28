@@ -6,40 +6,52 @@ import { cn } from '@/lib/utils';
 interface LogoProps {
   className?: string;
   size?: 'sm' | 'md' | 'lg';
-  showSubtitle?: boolean;
   linkToHome?: boolean;
 }
 
 export const Logo: React.FC<LogoProps> = ({
   className,
   size = 'md',
-  showSubtitle = false,
   linkToHome = true,
 }) => {
   const imageSizeClasses = {
-    sm: 'h-9 w-24',
-    md: 'h-10 w-24 sm:h-12 sm:w-[8.5rem]',
-    lg: 'h-[4.5rem] w-52',
+    sm: 'h-10 w-28',
+    md: 'h-14 w-36 sm:h-14 sm:w-40',
+    lg: 'h-20 w-56',
+  };
+
+  const imageOffsetClasses = {
+    sm: '-top-7',
+    md: '-top-9 sm:-top-10',
+    lg: '-top-[3.75rem]',
   };
 
   const content = (
-    <span className={cn('inline-flex flex-col items-center select-none group', className)}>
-      <Image
-        src="/casaio-logo.png"
-        alt="Casaio"
-        width={208}
-        height={72}
-        draggable={false}
+    <span className={cn('inline-flex flex-col items-center justify-center select-none group leading-none', className)}>
+      <span className={cn('relative block overflow-hidden', imageSizeClasses[size])}>
+        <Image
+          src="/casaio-logo.jpeg"
+          alt="Casaio"
+          width={1254}
+          height={1254}
+          draggable={false}
+          className={cn(
+            // The supplied square artwork has generous whitespace. This
+            // window shows the original mark without scaling the whitespace.
+            'absolute left-0 max-w-none h-auto w-full transition-transform duration-200 group-hover:scale-[1.02]',
+            imageOffsetClasses[size]
+          )}
+        />
+      </span>
+      <span
         className={cn(
-          'object-contain object-center transition-transform duration-200 group-hover:scale-[1.02]',
-          imageSizeClasses[size]
+          'mt-0.5 font-sans text-[7px] font-medium tracking-[0.08em] text-zinc-500',
+          size === 'sm' && 'text-[5px]',
+          size === 'lg' && 'text-[9px]'
         )}
-      />
-      {showSubtitle && (
-        <span className="-mt-0.5 text-[9px] uppercase font-sans tracking-[0.25em] text-zinc-500">
-          Curated Living
-        </span>
-      )}
+      >
+        Elevate Your Space
+      </span>
     </span>
   );
 

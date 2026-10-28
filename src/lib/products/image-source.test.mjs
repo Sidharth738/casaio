@@ -14,7 +14,7 @@ test('allows configured HTTPS product image hosts', () => {
 });
 
 test('allows root-relative local product image sources', () => {
-  assert.equal(getSafeProductImageSource('/casaio-logo.png'), '/casaio-logo.png');
+  assert.equal(getSafeProductImageSource('/casaio-logo.jpeg'), '/casaio-logo.jpeg');
 });
 
 test('rejects placeholder and unconfigured external hosts', () => {

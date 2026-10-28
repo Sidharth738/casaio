@@ -102,7 +102,7 @@ export const StoreHeader: React.FC = () => {
 
           {/* Brand Logo */}
           <div className="flex shrink-0 items-center">
-            <Logo size="md" showSubtitle />
+            <Logo size="md" />
           </div>
 
           {/* Desktop Search Bar */}

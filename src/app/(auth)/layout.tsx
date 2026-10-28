@@ -25,7 +25,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md text-center">
         <div className="inline-block mb-4">
-          <Logo size="lg" showSubtitle />
+          <Logo size="lg" />
         </div>
       </div>
 

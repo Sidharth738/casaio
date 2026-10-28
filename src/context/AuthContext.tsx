@@ -345,6 +345,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       setFirebaseUser(null);
       setRole('customer');
+      // A regional preference belongs to the signed-in session. Clear it so
+      // the next signed-out visitor starts with Casaio's default USD display.
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem('casaio-region', 'US');
+      }
       await syncServerSession(null);
     } finally {
       setIsLoading(false);

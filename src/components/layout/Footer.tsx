@@ -75,7 +75,7 @@ export const Footer: React.FC = () => {
           {/* Brand Info */}
           <div className="lg:col-span-2 space-y-4">
             <div className="bg-white p-1 rounded-md inline-block">
-              <Logo size="md" showSubtitle />
+              <Logo size="md" />
             </div>
             <p className="text-xs text-zinc-400 leading-relaxed max-w-sm">
               Casaio is a premier modern e-commerce dropshipping destination curating exquisite home furnishings, artisan decor, and architectural living essentials.

@@ -56,7 +56,7 @@ export const metadata: Metadata = {
     locale: 'en_IN',
     images: [
       {
-        url: absoluteUrl('/casaio-logo.png'),
+        url: absoluteUrl('/casaio-logo.jpeg'),
         width: 562,
         height: 562,
         alt: 'Casaio logo',
@@ -68,14 +68,14 @@ export const metadata: Metadata = {
     title: 'Casaio | Premium Curated Living',
     description: 'Elevate your sanctuary with timeless home furnishings and decor.',
     creator: SITE_NAME,
-    images: [absoluteUrl('/casaio-logo.png')],
+    images: [absoluteUrl('/casaio-logo.jpeg')],
   },
   alternates: {
     canonical: '/',
   },
   icons: {
-    icon: [{ url: '/casaio-logo.png', type: 'image/png' }],
-    apple: '/casaio-logo.png',
+    icon: [{ url: '/casaio-logo.jpeg', type: 'image/jpeg' }],
+    apple: '/casaio-logo.jpeg',
   },
 };
 

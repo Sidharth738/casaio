@@ -1,4 +1,5 @@
 export const BASE_CURRENCY = 'INR' as const;
+export const DEFAULT_REGION_CODE = 'US' as const;
 
 export type SupportedCurrency =
   | 'INR'
@@ -39,7 +40,7 @@ export const REGIONS: RegionOption[] = [
 export const SUPPORTED_CURRENCIES = REGIONS.map((region) => region.currency);
 
 export function getRegion(code: string) {
-  return REGIONS.find((region) => region.code === code) || REGIONS[0];
+  return REGIONS.find((region) => region.code === code) || REGIONS.find((region) => region.code === DEFAULT_REGION_CODE)!;
 }
 
 export function getRegionCodeForCountry(country: string) {

@@ -3,11 +3,13 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   BASE_CURRENCY,
+  DEFAULT_REGION_CODE,
   getRegion,
   formatConvertedCurrency,
   type RegionOption,
   type SupportedCurrency,
 } from '@/lib/currency';
+import { useAuth } from '@/hooks/useAuth';
 
 const STORAGE_KEY = 'casaio-region';
 
@@ -24,7 +26,7 @@ interface CurrencyContextValue {
 const CurrencyContext = createContext<CurrencyContextValue | undefined>(undefined);
 
 function detectRegion() {
-  if (typeof navigator === 'undefined') return 'IN';
+  if (typeof navigator === 'undefined') return DEFAULT_REGION_CODE;
   const language = navigator.language.toLowerCase();
   if (language.includes('-us')) return 'US';
   if (language.includes('-gb')) return 'GB';
@@ -39,20 +41,17 @@ function detectRegion() {
   if (language.startsWith('es')) return 'ES';
   if (language.startsWith('nl')) return 'NL';
   if (language.startsWith('pt') || language.startsWith('en-ie')) return 'IE';
-  return 'IN';
+  return DEFAULT_REGION_CODE;
 }
 
 export function CurrencyProvider({ children }: { children: React.ReactNode }) {
-  const [regionCode, setRegionCode] = useState('IN');
+  const { user, isLoading: authLoading } = useAuth();
+  const [regionCode, setRegionCode] = useState<string>(DEFAULT_REGION_CODE);
   const [rates, setRates] = useState<Record<string, number>>({ [BASE_CURRENCY]: 1 });
   const [rateDate, setRateDate] = useState<string | null>(null);
   const [isRateLoading, setIsRateLoading] = useState(true);
 
   useEffect(() => {
-    const stored = window.localStorage.getItem(STORAGE_KEY);
-    const detectedRegion = stored || detectRegion();
-    const regionTimer = window.setTimeout(() => setRegionCode(detectedRegion), 0);
-
     fetch('/api/exchange-rates')
       .then((response) => response.json())
       .then((data: { rates?: Record<string, number>; asOf?: string | null }) => {
@@ -61,9 +60,21 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
       })
       .catch(() => {})
       .finally(() => setIsRateLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (authLoading) return;
+
+    // Regional preferences are session-specific. A signed-out storefront
+    // must never reuse the previous customer's currency from local storage.
+    const nextRegion = user
+      ? window.localStorage.getItem(STORAGE_KEY) || detectRegion()
+      : DEFAULT_REGION_CODE;
+    window.localStorage.setItem(STORAGE_KEY, nextRegion);
+    const regionTimer = window.setTimeout(() => setRegionCode(nextRegion), 0);
 
     return () => window.clearTimeout(regionTimer);
-  }, []);
+  }, [authLoading, user]);
 
   const region = getRegion(regionCode);
   const rate = rates[region.currency] || 1;

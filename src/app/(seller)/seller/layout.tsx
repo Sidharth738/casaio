@@ -263,7 +263,7 @@ export default function SellerPortalLayout({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <Logo size="sm" showSubtitle={false} />
+              <Logo size="sm" />
               <span className="text-[10px] font-sans font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-900 text-orange-400">
                 Atelier
               </span>

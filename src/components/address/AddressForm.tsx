@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Home, Briefcase, MapPin, Check } from 'lucide-react';
 import { AddressAutocomplete } from './AddressAutocomplete';
-import { REGIONS } from '@/lib/currency';
+import { DEFAULT_REGION_CODE, REGIONS, getRegion } from '@/lib/currency';
 
 interface AddressFormProps {
   initialData?: UserAddress | null;
@@ -21,7 +21,7 @@ export const AddressForm: React.FC<AddressFormProps> = ({
   onCancel,
   isLoading = false,
 }) => {
-  const initialRegion = REGIONS.find((region) => region.name === initialData?.country) || REGIONS[0];
+  const initialRegion = REGIONS.find((region) => region.name === initialData?.country) || getRegion(DEFAULT_REGION_CODE);
   const initialPhone = initialData?.phoneNumber || '';
   const initialLocalPhone = initialPhone.startsWith(initialRegion.callingCode)
     ? initialPhone.slice(initialRegion.callingCode.length).trim()

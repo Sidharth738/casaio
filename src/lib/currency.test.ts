@@ -4,7 +4,7 @@ import { formatConvertedCurrency, getRegion } from './currency';
 
 test('resolves supported regions and currencies', () => {
   assert.equal(getRegion('US').currency, 'USD');
-  assert.equal(getRegion('missing').currency, 'INR');
+  assert.equal(getRegion('missing').currency, 'USD');
 });
 
 test('converts an INR base amount using the supplied rate', () => {
