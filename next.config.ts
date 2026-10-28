@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
   // directory and lock with a developer's existing Next.js process.
   ...(process.env.CASAIO_PLAYWRIGHT_TEST === 'true' ? { distDir: '.next/playwright' } : {}),
   images: {
+    formats: ['image/avif', 'image/webp'],
+    minimumCacheTTL: 31536000,
     localPatterns: [
       {
         pathname: '/casaio-logo.jpeg',
@@ -22,6 +24,7 @@ const nextConfig: NextConfig = {
       hostname,
     })),
   },
+  productionBrowserSourceMaps: true,
   async headers() {
     return [
       {

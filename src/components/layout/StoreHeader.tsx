@@ -7,7 +7,6 @@ import { Logo } from '@/components/common/Logo';
 import { useAuth } from '@/hooks/useAuth';
 import { useCart } from '@/hooks/useCart';
 import { useWishlist } from '@/hooks/useWishlist';
-import { getCategories } from '@/lib/firebase/firestore';
 import { Badge } from '@/components/ui/Badge';
 import { NotificationBell } from '@/components/layout/NotificationBell';
 import {
@@ -47,7 +46,7 @@ export const StoreHeader: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const [navCategories, setNavCategories] = useState([
+  const [navCategories] = useState([
     { name: 'All Products', href: '/products' },
     { name: 'Living Room', href: '/categories/living-room' },
     { name: 'Lighting', href: '/categories/lighting' },
@@ -55,20 +54,6 @@ export const StoreHeader: React.FC = () => {
     { name: 'Kitchen & Dining', href: '/categories/kitchen' },
     { name: 'Bed & Bath', href: '/categories/bed-bath' },
   ]);
-
-  useEffect(() => {
-    getCategories()
-      .then((categories) => {
-        setNavCategories([
-          { name: 'All Products', href: '/products' },
-          ...categories.map((category) => ({
-            name: category.name,
-            href: `/categories/${category.slug}`,
-          })),
-        ]);
-      })
-      .catch(() => {});
-  }, []);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -34,6 +34,8 @@ export const Logo: React.FC<LogoProps> = ({
           alt="Casaio"
           width={1254}
           height={1254}
+          sizes="(max-width: 640px) 112px, 224px"
+          quality={60}
           draggable={false}
           className={cn(
             // The supplied square artwork has generous whitespace. This

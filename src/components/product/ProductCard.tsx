@@ -68,7 +68,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
           ) : (
             <div className="w-full h-full flex flex-col gap-2 items-center justify-center bg-zinc-100 text-zinc-300">
               <ShoppingBag className="w-10 h-10 text-zinc-300" />
-              <span className="text-xs text-zinc-400">Image unavailable</span>
+              <span className="text-xs text-zinc-600">Image unavailable</span>
             </div>
           )}
         </Link>
@@ -115,7 +115,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
 
       {/* Content */}
       <div className="flex flex-col flex-1 p-4">
-        <div className="text-[11px] text-zinc-400 uppercase tracking-wider mb-1">
+        <div className="text-[11px] text-zinc-600 uppercase tracking-wider mb-1">
           {product.sellerStoreName}
         </div>
 
@@ -132,7 +132,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
             <span className="text-xs font-semibold text-zinc-800">
               {product.ratings.average.toFixed(1)}
             </span>
-            <span className="text-[11px] text-zinc-400">({product.ratings.count})</span>
+            <span className="text-[11px] text-zinc-600">({product.ratings.count})</span>
           </div>
         )}
 
@@ -143,7 +143,7 @@ export function ProductCard({ product, className }: ProductCardProps) {
               {formatPrice(product.price)}
             </span>
             {product.compareAtPrice && (
-              <span className="text-xs text-zinc-400 line-through">
+              <span className="text-xs text-zinc-600 line-through">
                 {formatPrice(product.compareAtPrice)}
               </span>
             )}

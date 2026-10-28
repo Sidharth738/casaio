@@ -188,11 +188,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setFirebaseUser(null);
         setUser(null);
         setRole('customer');
-        try {
-          await syncServerSession(null);
-        } catch (error) {
-            logProfileBootstrapFailure('session', error);
-        }
       }
       setIsLoading(false);
     });
