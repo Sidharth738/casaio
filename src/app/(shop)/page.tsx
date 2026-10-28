@@ -138,7 +138,9 @@ export default async function HomePage() {
                     alt="Casaio Curated Living Room Design"
                     fill
                     priority
-                    sizes="(max-width: 1024px) 100vw, 500px"
+                    fetchPriority="high"
+                    quality={65}
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 500px"
                     className="object-cover transition-transform duration-700 hover:scale-105"
                   />
                 </div>
@@ -190,6 +192,7 @@ export default async function HomePage() {
                   src={cat.imageUrl}
                   alt={cat.name}
                   fill
+                  quality={65}
                   sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 25vw"
                   className="object-cover transition-transform duration-500 group-hover:scale-105"
                 />

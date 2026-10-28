@@ -93,9 +93,12 @@ export function ContactWidget() {
             <button type="button" onClick={() => setOpen(false)} aria-label="Close contact form" className="rounded-full p-1 text-zinc-500 hover:bg-zinc-100"><X size={18} /></button>
           </div>
           <form onSubmit={handleSubmit} className="space-y-3">
-            <input name="name" placeholder="Your name" className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-orange-500" />
-            <input name="email" type="email" required placeholder="Your email" className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-orange-500" />
-            <textarea name="message" required rows={4} placeholder="How can we help?" className="w-full resize-none rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-orange-500" />
+            <label htmlFor="contact-name" className="sr-only">Your name</label>
+            <input id="contact-name" name="name" placeholder="Your name" autoComplete="name" className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-orange-500" />
+            <label htmlFor="contact-email" className="sr-only">Your email</label>
+            <input id="contact-email" name="email" type="email" required placeholder="Your email" autoComplete="email" className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-orange-500" />
+            <label htmlFor="contact-message" className="sr-only">How can we help?</label>
+            <textarea id="contact-message" name="message" required rows={4} placeholder="How can we help?" className="w-full resize-none border border-zinc-200 px-3 py-2 text-sm outline-none focus:border-orange-500" />
             <button type="submit" disabled={status === 'sending'} className="flex w-full items-center justify-center gap-2 rounded-lg bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:cursor-wait disabled:opacity-60"><Send size={16} /> {status === 'sending' ? 'Sending…' : 'Send message'}</button>
             {status === 'sent' && <p role="status" className="text-sm text-green-600">Your message was sent to Casaio.</p>}
             {status === 'error' && <p role="alert" className="text-sm text-red-600">{error}</p>}

@@ -45,7 +45,7 @@ export const Logo: React.FC<LogoProps> = ({
       </span>
       <span
         className={cn(
-          'mt-0.5 font-sans text-[6px] font-medium tracking-[0.08em] text-zinc-500 sm:text-[7px]',
+          'mt-0.5 font-sans text-[6px] font-medium tracking-[0.08em] text-zinc-600 sm:text-[7px]',
           size === 'sm' && 'text-[5px]',
           size === 'lg' && 'text-[9px]'
         )}

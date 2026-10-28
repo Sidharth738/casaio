@@ -1,6 +1,3 @@
-'use client';
-
-import React from 'react';
 import Link from 'next/link';
 import { Logo } from '@/components/common/Logo';
 import {
@@ -10,7 +7,7 @@ import {
   CreditCard,
 } from 'lucide-react';
 
-export const Footer: React.FC = () => {
+export function Footer() {
   return (
     <footer data-site-footer className="bg-zinc-950 text-zinc-300 border-t border-zinc-900 pt-16 pb-12 transition-colors">
       {/* Trust Badges */}
@@ -21,7 +18,7 @@ export const Footer: React.FC = () => {
               <Truck className="w-6 h-6" />
             </div>
             <div>
-              <h4 className="text-sm font-semibold text-white">Inspected Shipping</h4>
+              <h2 className="text-sm font-semibold text-white">Inspected Shipping</h2>
               <p className="text-xs text-zinc-400 mt-1">
                 Fast & secure delivery nationwide with real-time milestone tracking.
               </p>
@@ -33,7 +30,7 @@ export const Footer: React.FC = () => {
               <CreditCard className="w-6 h-6" />
             </div>
             <div>
-              <h4 className="text-sm font-semibold text-white">Flexible Payments</h4>
+              <h2 className="text-sm font-semibold text-white">Flexible Payments</h2>
               <p className="text-xs text-zinc-400 mt-1">
                 Razorpay Online (UPI, Cards, Netbanking) & Cash on Delivery supported.
               </p>
@@ -45,7 +42,7 @@ export const Footer: React.FC = () => {
               <RotateCcw className="w-6 h-6" />
             </div>
             <div>
-              <h4 className="text-sm font-semibold text-white">7-Day Easy Returns</h4>
+              <h2 className="text-sm font-semibold text-white">7-Day Easy Returns</h2>
               <p className="text-xs text-zinc-400 mt-1">
                 Hassle-free replacement or refund guarantee on damaged or incorrect items.
               </p>
@@ -57,7 +54,7 @@ export const Footer: React.FC = () => {
               <ShieldCheck className="w-6 h-6" />
             </div>
             <div>
-              <h4 className="text-sm font-semibold text-white">Verified Dropshippers</h4>
+              <h2 className="text-sm font-semibold text-white">Verified Dropshippers</h2>
               <p className="text-xs text-zinc-400 mt-1">
                 Every supplier and artisan is rigorously vetted for quality and authenticity.
               </p>
@@ -83,9 +80,9 @@ export const Footer: React.FC = () => {
 
           {/* Quick Categories */}
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-white mb-4">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-white mb-4">
               Curated Collections
-            </h4>
+            </h2>
             <ul className="space-y-2.5 text-xs text-zinc-400">
               <li><Link href="/categories/living-room" className="hover:text-orange-400 transition-colors">Living Room</Link></li>
               <li><Link href="/categories/lighting" className="hover:text-orange-400 transition-colors">Architectural Lighting</Link></li>
@@ -98,9 +95,9 @@ export const Footer: React.FC = () => {
 
           {/* Customer Care */}
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-white mb-4">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-white mb-4">
               Customer Experience
-            </h4>
+            </h2>
             <ul className="space-y-2.5 text-xs text-zinc-400">
               <li><Link href="/account/orders" className="hover:text-orange-400 transition-colors">Track Order Status</Link></li>
               <li><Link href="/shipping-policy" className="hover:text-orange-400 transition-colors">Shipping & Delivery</Link></li>
@@ -112,9 +109,9 @@ export const Footer: React.FC = () => {
 
           {/* Partners & Sellers */}
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-wider text-white mb-4">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-white mb-4">
               Seller Platform
-            </h4>
+            </h2>
             <ul className="space-y-2.5 text-xs text-zinc-400">
               <li><Link href="/seller/register" className="hover:text-orange-400 transition-colors">Sell on Casaio</Link></li>
               <li><Link href="/seller/dashboard" className="hover:text-orange-400 transition-colors">Seller Portal Login</Link></li>
@@ -163,4 +160,4 @@ export const Footer: React.FC = () => {
       </div>
     </footer>
   );
-};
+}

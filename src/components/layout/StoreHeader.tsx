@@ -113,7 +113,7 @@ export const StoreHeader: React.FC = () => {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search luxury furnishings, rugs, lighting..."
-                className="w-full pl-10 pr-4 py-2 text-sm bg-zinc-50 border border-zinc-200 rounded-full focus:outline-none focus:border-orange-600 focus:bg-white focus:ring-1 focus:ring-orange-600 transition-all text-zinc-900 placeholder:text-zinc-400"
+                className="w-full pl-10 pr-4 py-2 text-sm bg-zinc-50 border border-zinc-200 rounded-full focus:outline-none focus:border-orange-600 focus:bg-white focus:ring-1 focus:ring-orange-600 transition-all text-zinc-900 placeholder:text-zinc-500"
               />
               <Search className="absolute left-3.5 top-2.5 w-4 h-4 text-zinc-400 pointer-events-none" />
             </form>

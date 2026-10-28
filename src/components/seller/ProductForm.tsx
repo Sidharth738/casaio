@@ -6,7 +6,6 @@ import {
   Trash2,
   Check,
   Star,
-  Upload,
 } from 'lucide-react';
 import type { Product, Category, ProductImage } from '@/types';
 import { getCategories } from '@/lib/firebase/firestore';
