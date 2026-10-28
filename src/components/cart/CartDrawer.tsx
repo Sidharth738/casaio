@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { X, Trash2, ShoppingBag, ArrowRight, ShieldCheck } from 'lucide-react';
 import { useCart } from '@/hooks/useCart';
 import { Button } from '@/components/ui/Button';
-import { formatCurrency } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
 import { SafeProductImage } from '@/components/product/SafeProductImage';
 
 export function CartDrawer() {
+  const { formatPrice } = useCurrency();
   const { items, itemCount, subtotal, isOpen, closeCart, updateQuantity, removeItem } = useCart();
 
   // Prevent background scroll when drawer is open
@@ -139,7 +140,7 @@ export function CartDrawer() {
                         {/* Price */}
                         <div className="text-right">
                           <span className="font-serif font-bold text-sm text-zinc-950">
-                            {formatCurrency(item.unitPrice * item.quantity)}
+                            {formatPrice(item.unitPrice * item.quantity)}
                           </span>
                         </div>
                       </div>
@@ -157,7 +158,7 @@ export function CartDrawer() {
                 <div className="flex justify-between text-zinc-600">
                   <span>Subtotal</span>
                   <span className="font-serif font-bold text-zinc-900 text-sm">
-                    {formatCurrency(subtotal)}
+                    {formatPrice(subtotal)}
                   </span>
                 </div>
                 <div className="flex justify-between text-zinc-600">

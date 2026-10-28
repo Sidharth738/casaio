@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { ProductCard } from '@/components/product/ProductCard';
 import { Container } from '@/components/ui/Container';
 import { getProducts, getCategories } from '@/lib/firebase/firestore';
-import { formatCurrency } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
 import type { Product, Category, ProductFilterParams } from '@/types';
 
 const SORT_OPTIONS = [
@@ -21,6 +21,7 @@ const SORT_OPTIONS = [
 type SortValue = (typeof SORT_OPTIONS)[number]['value'];
 
 export default function ProductsClientPage() {
+  const { formatPrice } = useCurrency();
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -215,7 +216,7 @@ export default function ProductsClientPage() {
                 </div>
                 {(minPrice || maxPrice) && (
                   <p className="text-[11px] text-zinc-500 mt-1">
-                    {minPrice ? formatCurrency(minPrice) : '₹0'} – {maxPrice ? formatCurrency(maxPrice) : '∞'}
+                    {minPrice ? formatPrice(minPrice) : formatPrice(0)} – {maxPrice ? formatPrice(maxPrice) : '∞'}
                   </p>
                 )}
               </div>
@@ -262,7 +263,7 @@ export default function ProductsClientPage() {
                 )}
                 {(minPrice || maxPrice) && (
                   <span className="inline-flex items-center gap-1 text-xs bg-zinc-100 text-zinc-700 border border-zinc-200 rounded-full px-2.5 py-1">
-                    {minPrice ? formatCurrency(minPrice) : '₹0'} – {maxPrice ? formatCurrency(maxPrice) : '∞'}
+                    {minPrice ? formatPrice(minPrice) : formatPrice(0)} – {maxPrice ? formatPrice(maxPrice) : '∞'}
                     <button onClick={() => updateUrl({ minPrice: undefined, maxPrice: undefined })}><X className="w-3 h-3" /></button>
                   </span>
                 )}

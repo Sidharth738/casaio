@@ -7,10 +7,11 @@ import { useCart } from '@/hooks/useCart';
 import { Container } from '@/components/ui/Container';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { formatCurrency } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
 import { SafeProductImage } from '@/components/product/SafeProductImage';
 
 export default function CartPage() {
+  const { formatPrice } = useCurrency();
   const { items, itemCount, subtotal, shipping, total, updateQuantity, removeItem, clearCart } = useCart();
 
   if (items.length === 0) {
@@ -95,7 +96,7 @@ export default function CartPage() {
                             </p>
                           </div>
                           <span className="font-serif font-bold text-base sm:text-lg text-zinc-950">
-                            {formatCurrency(item.unitPrice * item.quantity)}
+                            {formatPrice(item.unitPrice * item.quantity)}
                           </span>
                         </div>
 
@@ -133,7 +134,7 @@ export default function CartPage() {
                           </div>
 
                           <span className="text-xs text-zinc-400">
-                            {formatCurrency(item.unitPrice)} each
+                            {formatPrice(item.unitPrice)} each
                           </span>
                         </div>
 
@@ -188,13 +189,13 @@ export default function CartPage() {
                 <div className="flex justify-between">
                   <span>Subtotal ({itemCount} items)</span>
                   <span className="font-serif font-bold text-zinc-900 text-sm">
-                    {formatCurrency(subtotal)}
+                    {formatPrice(subtotal)}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span>Estimated Shipping</span>
                   <span className="text-emerald-700 font-semibold uppercase">
-                    {shipping === 0 ? 'Free Insured' : formatCurrency(shipping)}
+                    {shipping === 0 ? 'Free Insured' : formatPrice(shipping)}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -207,7 +208,7 @@ export default function CartPage() {
               <div className="py-4 flex justify-between items-baseline">
                 <span className="font-serif text-base font-bold text-zinc-950">Grand Total</span>
                 <span className="font-serif text-2xl font-bold text-zinc-950">
-                  {formatCurrency(total)}
+                    {formatPrice(total)}
                 </span>
               </div>
 

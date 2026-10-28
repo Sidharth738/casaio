@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Heart, ShoppingBag, Zap, Check, ShieldCheck, Truck, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { formatCurrency } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
 import { useCart } from '@/hooks/useCart';
 import { useWishlist } from '@/hooks/useWishlist';
 import type { Product, ProductVariant } from '@/types';
@@ -15,6 +15,7 @@ interface ProductActionsProps {
 }
 
 export function ProductActions({ product }: ProductActionsProps) {
+  const { formatPrice } = useCurrency();
   const router = useRouter();
   const { addItem, openCart } = useCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
@@ -96,12 +97,12 @@ export function ProductActions({ product }: ProductActionsProps) {
       {/* Price section */}
       <div className="flex items-baseline gap-3">
         <span className="font-serif text-3xl sm:text-4xl font-bold text-zinc-950">
-          {formatCurrency(currentPrice)}
+          {formatPrice(currentPrice)}
         </span>
         {currentCompareAtPrice && currentCompareAtPrice > currentPrice && (
           <>
             <span className="text-lg text-zinc-400 line-through">
-              {formatCurrency(currentCompareAtPrice)}
+              {formatPrice(currentCompareAtPrice)}
             </span>
             <Badge variant="accent" size="sm">
               {Math.round(((currentCompareAtPrice - currentPrice) / currentCompareAtPrice) * 100)}% OFF
@@ -161,7 +162,7 @@ export function ProductActions({ product }: ProductActionsProps) {
                   {v.title}
                   {v.price !== product.price && (
                     <span className="ml-1.5 opacity-75 font-normal">
-                      ({formatCurrency(v.price)})
+                      ({formatPrice(v.price)})
                     </span>
                   )}
                 </button>

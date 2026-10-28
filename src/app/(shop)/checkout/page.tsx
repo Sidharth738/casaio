@@ -32,6 +32,8 @@ import { AddressForm } from '@/components/address/AddressForm';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { formatCurrency } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
+import { getRegionCodeForCountry } from '@/lib/currency';
 import { calculateAuthoritativePricing } from '@/lib/orders/checkout-validation';
 import { getSafeProductImageSource } from '@/lib/products/image-source';
 import { classifyPaymentAttemptRefresh, resolveInactiveAttemptRefresh } from '@/lib/payment/payment-attempt-refresh';
@@ -131,6 +133,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { items, itemCount, subtotal, clearCart } = useCart();
+  const { formatPrice, currency, setRegion } = useCurrency();
 
   // Address state
   const [addresses, setAddresses] = useState<UserAddress[]>([]);
@@ -292,6 +295,12 @@ export default function CheckoutPage() {
       loadAddresses();
     }
   }, [user, authLoading]);
+
+  useEffect(() => {
+    if (selectedAddress?.country) {
+      setRegion(getRegionCodeForCountry(selectedAddress.country));
+    }
+  }, [selectedAddress?.country, setRegion]);
 
   // Calculations
   const pricingPreview = calculateAuthoritativePricing(
@@ -1015,7 +1024,7 @@ export default function CheckoutPage() {
                       </div>
 
                       <span className="font-mono text-xs font-bold text-zinc-900 shrink-0">
-                        {formatCurrency(item.unitPrice * item.quantity)}
+                        {formatPrice(item.unitPrice * item.quantity)}
                       </span>
                     </div>
                   ))}
@@ -1030,7 +1039,7 @@ export default function CheckoutPage() {
                         <div>
                           <span className="font-bold">{couponResult.coupon?.code}</span>
                           <span className="text-zinc-600 ml-1.5">
-                            (-{formatCurrency(discountAmount)})
+                            (-{formatPrice(discountAmount)})
                           </span>
                         </div>
                       </div>
@@ -1068,14 +1077,14 @@ export default function CheckoutPage() {
                   <div className="flex justify-between text-zinc-600">
                     <span>Items subtotal (GST-inclusive)</span>
                     <span className="font-mono font-medium text-zinc-900">
-                      {formatCurrency(displayedPricing.subtotal)}
+                      {formatPrice(displayedPricing.subtotal)}
                     </span>
                   </div>
 
                   {discountAmount > 0 && (
                     <div className="flex justify-between text-emerald-700 font-medium">
                       <span>Artisanal Discount</span>
-                      <span className="font-mono">-{formatCurrency(discountAmount)}</span>
+                      <span className="font-mono">-{formatPrice(discountAmount)}</span>
                     </div>
                   )}
 
@@ -1089,7 +1098,7 @@ export default function CheckoutPage() {
                   <div className="flex justify-between text-zinc-400 text-[11px]">
                     <span>Includes GST (18%)</span>
                     <span className="font-mono">
-                      {formatCurrency(displayedPricing.taxAmount)}
+                      {formatPrice(displayedPricing.taxAmount)}
                     </span>
                   </div>
 
@@ -1098,10 +1107,16 @@ export default function CheckoutPage() {
                       Grand Total
                     </span>
                     <span className="font-serif font-bold text-xl text-zinc-950">
-                      {formatCurrency(grandTotal)}
+                      {formatPrice(grandTotal)}
                     </span>
                   </div>
                 </div>
+
+                {currency !== 'INR' && (
+                  <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] leading-4 text-amber-900">
+                    Prices are shown in your selected currency for reference. Razorpay will charge the exact INR total of {formatCurrency(grandTotal)} at checkout.
+                  </p>
+                )}
 
                 {/* Primary CTA Button */}
                 <Button
@@ -1119,7 +1134,7 @@ export default function CheckoutPage() {
                       ? 'Payment Status Needs Review'
                       : activePaymentAttempt?.retryAvailable
                         ? 'Resume Existing Payment'
-                        : `Pay ${formatCurrency(grandTotal)} Securely`}
+                        : `Pay ${formatPrice(grandTotal)} Securely`}
                 </Button>
 
                 {/* Security and Return Guarantees */}

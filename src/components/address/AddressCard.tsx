@@ -79,8 +79,11 @@ export const AddressCard: React.FC<AddressCardProps> = ({
         <h4 className="font-serif font-bold text-base text-zinc-900 mb-1">
           {address.fullName}
         </h4>
+        {address.company && (
+          <p className="text-xs text-zinc-600 mb-1">{address.company}</p>
+        )}
         <p className="text-xs text-zinc-500 font-mono mb-2.5">
-          +91 {address.phoneNumber}
+          {address.phoneNumber}
           {address.alternatePhone && ` • Alt: +91 ${address.alternatePhone}`}
         </p>
 
@@ -97,6 +100,7 @@ export const AddressCard: React.FC<AddressCardProps> = ({
         <p className="text-xs font-medium text-zinc-800 mt-1">
           {address.city}, {address.state} — {address.postalCode}
         </p>
+        <p className="text-xs text-zinc-500 mt-0.5">{address.country}</p>
       </div>
 
       {/* Action Footer */}

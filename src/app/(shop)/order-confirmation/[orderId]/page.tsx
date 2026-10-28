@@ -19,12 +19,13 @@ import { getOrderById } from '@/lib/firebase/firestore';
 import { getPaymentConfirmationState } from '@/lib/payment/confirmation-state';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { formatCurrency } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
 import { SafeProductImage } from '@/components/product/SafeProductImage';
 
 export default function OrderConfirmationPage() {
   const params = useParams();
   const orderId = params?.orderId as string;
+  const { formatPrice } = useCurrency();
 
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
@@ -184,12 +185,12 @@ export default function OrderConfirmationPage() {
                     <p className="text-xs font-bold text-zinc-900 truncate">{item.title}</p>
                     <p className="text-[11px] text-zinc-400">Sold by: {item.sellerStoreName}</p>
                     <p className="text-[11px] text-zinc-500 mt-0.5">
-                      Qty: {item.quantity} × {formatCurrency(item.unitPrice)}
+                      Qty: {item.quantity} × {formatPrice(item.unitPrice)}
                     </p>
                   </div>
 
                   <span className="font-mono text-xs font-bold text-zinc-900 shrink-0">
-                    {formatCurrency(item.totalPrice)}
+                      {formatPrice(item.totalPrice)}
                   </span>
                 </div>
               ))}
@@ -199,18 +200,18 @@ export default function OrderConfirmationPage() {
             <div className="pt-4 border-t border-zinc-100 space-y-2 text-xs">
               <div className="flex justify-between text-zinc-600">
                 <span>Items Subtotal (GST-inclusive)</span>
-                <span className="font-mono">{formatCurrency(order.pricing.subtotal)}</span>
+                <span className="font-mono">{formatPrice(order.pricing.subtotal)}</span>
               </div>
               {order.pricing.discountAmount > 0 && (
                 <div className="flex justify-between text-emerald-700">
                   <span>Coupon Discount ({order.couponApplied?.code})</span>
-                  <span className="font-mono">-{formatCurrency(order.pricing.discountAmount)}</span>
+                <span className="font-mono">-{formatPrice(order.pricing.discountAmount)}</span>
                 </div>
               )}
               {typeof order.pricing.taxRate === 'number' && typeof order.pricing.taxAmount === 'number' && (
                 <div className="flex justify-between text-zinc-600">
                   <span>Includes GST ({Math.round(order.pricing.taxRate * 100)}%)</span>
-                  <span className="font-mono">{formatCurrency(order.pricing.taxAmount)}</span>
+                <span className="font-mono">{formatPrice(order.pricing.taxAmount)}</span>
                 </div>
               )}
               <div className="flex justify-between text-zinc-600">
@@ -220,7 +221,7 @@ export default function OrderConfirmationPage() {
               <div className="pt-3 border-t border-zinc-200 flex justify-between items-baseline font-bold text-zinc-950">
                 <span className="font-serif text-base">{order.payment.status === 'captured' ? 'Total Amount Paid' : 'Order Total'}</span>
                 <span className="font-serif text-xl font-mono">
-                  {formatCurrency(order.pricing.totalAmount)}
+                  {formatPrice(order.pricing.totalAmount)}
                 </span>
               </div>
             </div>

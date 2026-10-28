@@ -4,7 +4,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Heart, ShoppingBag, Star } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
-import { formatCurrency } from '@/lib/utils';
+import { useCurrency } from '@/hooks/useCurrency';
 import { useWishlist } from '@/hooks/useWishlist';
 import { useState } from 'react';
 import type { Product } from '@/types';
@@ -17,6 +17,7 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, className }: ProductCardProps) {
+  const { formatPrice } = useCurrency();
   const [imageFailed, setImageFailed] = useState(false);
   const { isInWishlist, toggleWishlist } = useWishlist();
   const isWishlisted = isInWishlist(product.id);
@@ -139,11 +140,11 @@ export function ProductCard({ product, className }: ProductCardProps) {
         <div className="mt-auto pt-3 border-t border-zinc-100 flex items-center justify-between gap-2">
           <div className="flex items-baseline gap-2">
             <span className="font-serif font-bold text-base text-zinc-950">
-              {formatCurrency(product.price)}
+              {formatPrice(product.price)}
             </span>
             {product.compareAtPrice && (
               <span className="text-xs text-zinc-400 line-through">
-                {formatCurrency(product.compareAtPrice)}
+                {formatPrice(product.compareAtPrice)}
               </span>
             )}
           </div>

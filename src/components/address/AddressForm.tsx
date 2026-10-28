@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Home, Briefcase, MapPin, Check } from 'lucide-react';
 import { AddressAutocomplete } from './AddressAutocomplete';
+import { REGIONS } from '@/lib/currency';
 
 interface AddressFormProps {
   initialData?: UserAddress | null;
@@ -20,13 +21,21 @@ export const AddressForm: React.FC<AddressFormProps> = ({
   onCancel,
   isLoading = false,
 }) => {
+  const initialRegion = REGIONS.find((region) => region.name === initialData?.country) || REGIONS[0];
+  const initialPhone = initialData?.phoneNumber || '';
+  const initialLocalPhone = initialPhone.startsWith(initialRegion.callingCode)
+    ? initialPhone.slice(initialRegion.callingCode.length).trim()
+    : initialPhone;
+  const [phoneCountryCode, setPhoneCountryCode] = useState(initialRegion.callingCode);
   const [formData, setFormData] = useState({
     fullName: initialData?.fullName || '',
-    phoneNumber: initialData?.phoneNumber || '',
+    phoneNumber: initialLocalPhone,
     alternatePhone: initialData?.alternatePhone || '',
+    company: initialData?.company || '',
     addressLine1: initialData?.addressLine1 || '',
     addressLine2: initialData?.addressLine2 || '',
     landmark: initialData?.landmark || '',
+    deliveryInstructions: initialData?.deliveryInstructions || '',
     city: initialData?.city || '',
     state: initialData?.state || '',
     postalCode: initialData?.postalCode || '',
@@ -43,16 +52,16 @@ export const AddressForm: React.FC<AddressFormProps> = ({
     if (!formData.fullName.trim()) newErrors.fullName = 'Full name is required';
     if (!formData.phoneNumber.trim()) {
       newErrors.phoneNumber = 'Phone number is required';
-    } else if (!/^[6-9]\d{9}$/.test(formData.phoneNumber.trim())) {
-      newErrors.phoneNumber = 'Enter a valid 10-digit Indian mobile number';
+    } else if (!/^\+?[0-9\s()-]{7,20}$/.test(formData.phoneNumber.trim())) {
+      newErrors.phoneNumber = 'Enter a valid phone number';
     }
     if (!formData.addressLine1.trim()) newErrors.addressLine1 = 'House/flat and street are required';
     if (!formData.city.trim()) newErrors.city = 'City is required';
     if (!formData.state.trim()) newErrors.state = 'State is required';
     if (!formData.postalCode.trim()) {
       newErrors.postalCode = 'Postal code is required';
-    } else if (!/^\d{6}$/.test(formData.postalCode.trim())) {
-      newErrors.postalCode = 'Enter a valid 6-digit PIN code';
+    } else if (!/^[a-zA-Z0-9\s-]{3,12}$/.test(formData.postalCode.trim())) {
+      newErrors.postalCode = 'Enter a valid postal or ZIP code';
     }
 
     setErrors(newErrors);
@@ -62,8 +71,20 @@ export const AddressForm: React.FC<AddressFormProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    await onSubmit(formData);
+    await onSubmit({
+      ...formData,
+      phoneNumber: formData.phoneNumber.trim().startsWith('+')
+        ? formData.phoneNumber.trim()
+        : `${phoneCountryCode} ${formData.phoneNumber.trim()}`,
+    });
   };
+
+  const selectedRegion = REGIONS.find((region) => region.name === formData.country) || REGIONS[0];
+  const stateLabel = selectedRegion.code === 'GB'
+    ? 'County / Region *'
+    : selectedRegion.code === 'AE'
+      ? 'Emirate *'
+      : 'State / Province / Region *';
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -97,20 +118,44 @@ export const AddressForm: React.FC<AddressFormProps> = ({
           error={errors.fullName}
           required
         />
-        <Input
-          label="10-digit Mobile Number *"
-          placeholder="e.g. 9876543210"
-          value={formData.phoneNumber}
-          onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-          error={errors.phoneNumber}
-          required
-        />
+        <div>
+          <label className="mb-1.5 block text-xs font-medium text-zinc-700">Phone Number *</label>
+          <div className="flex gap-2">
+            <select
+              aria-label="Phone country code"
+              value={phoneCountryCode}
+              onChange={(e) => setPhoneCountryCode(e.target.value)}
+              className="h-10 w-24 shrink-0 rounded-md border border-zinc-300 bg-white px-2 text-sm text-zinc-900 outline-none focus:border-orange-600 focus:ring-1 focus:ring-orange-600"
+            >
+              {REGIONS.map((region) => (
+                <option key={`${region.code}-${region.callingCode}`} value={region.callingCode}>
+                  {region.code} {region.callingCode}
+                </option>
+              ))}
+            </select>
+            <Input
+              aria-label="Phone number"
+              placeholder="555 123 4567"
+              value={formData.phoneNumber}
+              onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+              error={errors.phoneNumber}
+              required
+              className="flex-1"
+            />
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <Input
+          label="Company (Optional)"
+          placeholder="e.g. Casaio Studio"
+          value={formData.company}
+          onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+        />
+        <Input
           label="Alternate Phone (Optional)"
-          placeholder="e.g. 9811223344"
+          placeholder="e.g. +91 9811223344"
           value={formData.alternatePhone}
           onChange={(e) => setFormData({ ...formData, alternatePhone: e.target.value })}
         />
@@ -138,6 +183,30 @@ export const AddressForm: React.FC<AddressFormProps> = ({
         onChange={(e) => setFormData({ ...formData, addressLine2: e.target.value })}
       />
 
+      <div>
+        <label htmlFor="address-country" className="mb-1.5 block text-xs font-medium text-zinc-700">
+          Country / Region *
+        </label>
+        <select
+          id="address-country"
+          value={formData.country}
+          onChange={(e) => {
+            const nextCountry = e.target.value;
+            const nextRegion = REGIONS.find((region) => region.name === nextCountry);
+            setFormData({ ...formData, country: nextCountry });
+            if (nextRegion) setPhoneCountryCode(nextRegion.callingCode);
+          }}
+          className="h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-900 outline-none transition-colors focus:border-orange-600 focus:ring-1 focus:ring-orange-600"
+          required
+        >
+          {REGIONS.map((region) => (
+            <option key={region.code} value={region.name}>
+              {region.name} ({region.currency})
+            </option>
+          ))}
+        </select>
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Input
           label="Town / City *"
@@ -148,7 +217,7 @@ export const AddressForm: React.FC<AddressFormProps> = ({
           required
         />
         <Input
-          label="State *"
+          label={stateLabel}
           placeholder="e.g. Karnataka"
           value={formData.state}
           onChange={(e) => setFormData({ ...formData, state: e.target.value })}
@@ -156,12 +225,27 @@ export const AddressForm: React.FC<AddressFormProps> = ({
           required
         />
         <Input
-          label="PIN Code *"
-          placeholder="e.g. 560038"
+          label="Postal / ZIP Code *"
+          placeholder="e.g. 560038 or 10001"
           value={formData.postalCode}
           onChange={(e) => setFormData({ ...formData, postalCode: e.target.value })}
           error={errors.postalCode}
           required
+        />
+      </div>
+
+      <div>
+        <label htmlFor="delivery-instructions" className="mb-1.5 block text-xs font-medium text-zinc-700">
+          Delivery instructions (Optional)
+        </label>
+        <textarea
+          id="delivery-instructions"
+          rows={2}
+          maxLength={300}
+          placeholder="e.g. Leave with reception or call on arrival"
+          value={formData.deliveryInstructions}
+          onChange={(e) => setFormData({ ...formData, deliveryInstructions: e.target.value })}
+          className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors focus:border-orange-600 focus:ring-1 focus:ring-orange-600"
         />
       </div>
 

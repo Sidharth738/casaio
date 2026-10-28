@@ -185,12 +185,18 @@ export function validateShippingAddress(address: unknown): ValidatedShippingAddr
     ...(typeof raw.alternatePhone === 'string' && raw.alternatePhone.trim()
       ? { alternatePhone: raw.alternatePhone.trim() }
       : {}),
+    ...(typeof raw.company === 'string' && raw.company.trim()
+      ? { company: raw.company.trim() }
+      : {}),
     addressLine1,
     ...(typeof raw.addressLine2 === 'string' && raw.addressLine2.trim()
       ? { addressLine2: raw.addressLine2.trim() }
       : {}),
     ...(typeof raw.landmark === 'string' && raw.landmark.trim()
       ? { landmark: raw.landmark.trim() }
+      : {}),
+    ...(typeof raw.deliveryInstructions === 'string' && raw.deliveryInstructions.trim()
+      ? { deliveryInstructions: raw.deliveryInstructions.trim() }
       : {}),
     city,
     state,

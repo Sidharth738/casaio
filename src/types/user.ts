@@ -21,9 +21,11 @@ export interface UserAddress {
   fullName: string;
   phoneNumber: string;
   alternatePhone?: string;
+  company?: string;
   addressLine1: string;
   addressLine2?: string;
   landmark?: string;
+  deliveryInstructions?: string;
   city: string;
   state: string;
   postalCode: string;
