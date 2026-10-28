@@ -1,21 +1,8 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import {
-  User,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signInWithPopup,
-  GoogleAuthProvider,
-  signOut,
-  sendPasswordResetEmail,
-  type ActionCodeSettings,
-  onAuthStateChanged,
-  updateProfile,
-  sendEmailVerification,
-} from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { auth, db, isFirebaseEmulatorMode } from '@/lib/firebase/client';
+import type { ActionCodeSettings, User } from 'firebase/auth';
+import type { Firestore } from 'firebase/firestore';
 import { UserProfile, UserRole } from '@/types/user';
 import { getVerificationDeliveryMessage, type VerificationDelivery } from '@/lib/auth/verification-delivery';
 import { createProfileBootstrapLoader, getProfileFailureCategory } from '@/lib/auth/profile-bootstrap';
@@ -37,6 +24,35 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+type FirebaseAuthApi = typeof import('firebase/auth');
+type FirebaseFirestoreApi = typeof import('firebase/firestore');
+
+interface FirebaseServices {
+  authApi: FirebaseAuthApi;
+  firestoreApi: FirebaseFirestoreApi;
+  auth: import('firebase/auth').Auth;
+  db: Firestore;
+  isFirebaseEmulatorMode: boolean;
+}
+
+let firebaseServicesPromise: Promise<FirebaseServices> | undefined;
+
+function getFirebaseServices() {
+  firebaseServicesPromise ??= Promise.all([
+    import('firebase/auth'),
+    import('firebase/firestore'),
+    import('@/lib/firebase/client'),
+  ]).then(([authApi, firestoreApi, client]) => ({
+    authApi,
+    firestoreApi,
+    auth: client.auth,
+    db: client.db,
+    isFirebaseEmulatorMode: client.isFirebaseEmulatorMode,
+  }));
+
+  return firebaseServicesPromise;
+}
+
 function getActionCodeSettings(continuePath: string): ActionCodeSettings {
   return {
     url: new URL(continuePath, window.location.origin).toString(),
@@ -45,15 +61,16 @@ function getActionCodeSettings(continuePath: string): ActionCodeSettings {
 }
 
 async function sendVerificationEmail(user: User): Promise<VerificationDelivery> {
+  const { authApi, isFirebaseEmulatorMode } = await getFirebaseServices();
   try {
-    await sendEmailVerification(user, getActionCodeSettings('/login?verified=1'));
+    await authApi.sendEmailVerification(user, getActionCodeSettings('/login?verified=1'));
   } catch (error) {
     const code = (error as { code?: string }).code;
     // A misconfigured authorized continue URL should not prevent Firebase from
     // sending its standard verification link, which still verifies the account.
     if (code !== 'auth/unauthorized-continue-uri' && code !== 'auth/invalid-continue-uri') throw error;
     console.warn('Custom verification return URL was rejected; sending the standard Firebase verification link instead.');
-    await sendEmailVerification(user);
+    await authApi.sendEmailVerification(user);
   }
   return isFirebaseEmulatorMode ? 'emulator' : 'email';
 }
@@ -101,15 +118,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       setFirebaseUser(null);
       setRole('customer');
-      await signOut(auth);
+      const { authApi, auth } = await getFirebaseServices();
+      await authApi.signOut(auth);
       throw error;
     }
   }, [syncServerSession]);
 
   // Fetch or create Firestore user profile
   const fetchUserProfile = useCallback(async (fbUser: User): Promise<UserProfile> => {
-    const userDocRef = doc(db, 'users', fbUser.uid);
-    const userDoc = await getDoc(userDocRef);
+    const { firestoreApi, db } = await getFirebaseServices();
+    const userDocRef = firestoreApi.doc(db, 'users', fbUser.uid);
+    const userDoc = await firestoreApi.getDoc(userDocRef);
 
     if (!userDoc.exists()) {
       throw Object.assign(new Error('The authenticated user profile was not initialized.'), {
@@ -160,7 +179,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Listen to Auth State changes
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
+    let unsubscribe = () => {};
+    let disposed = false;
+
+    void getFirebaseServices().then(({ authApi, auth }) => {
+      if (disposed) return;
+      unsubscribe = authApi.onAuthStateChanged(auth, async (fbUser) => {
       if (authOperationInProgress.current) return;
       setIsLoading(true);
       if (fbUser) {
@@ -178,7 +202,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setFirebaseUser(null);
           setRole('customer');
           try {
-            await signOut(auth);
+            await authApi.signOut(auth);
             await syncServerSession(null);
           } catch (clearError) {
             logProfileBootstrapFailure('session', clearError);
@@ -190,16 +214,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setRole('customer');
       }
       setIsLoading(false);
+      });
     });
 
-    return () => unsubscribe();
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
   }, [loadAuthenticatedProfile, logProfileBootstrapFailure, syncServerSession]);
 
   const loginWithEmail = async (email: string, pass: string) => {
+    const { authApi, auth } = await getFirebaseServices();
     setIsLoading(true);
     authOperationInProgress.current = true;
     try {
-      const cred = await signInWithEmailAndPassword(auth, email, pass);
+      const cred = await authApi.signInWithEmailAndPassword(auth, email, pass);
       if (!cred.user.emailVerified) {
         try {
           const profile = await loadAuthenticatedProfile(cred.user);
@@ -212,7 +241,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return 'admin';
         } catch (cause) {
           const code = (cause as { code?: string })?.code;
-          await signOut(auth);
+          await authApi.signOut(auth);
           try { await syncServerSession(null); } catch (clearError) {
             console.error('Unable to clear rejected login session:', clearError);
           }
@@ -240,7 +269,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         profile = await loadAuthenticatedProfile(cred.user);
       } catch (cause) {
-        await signOut(auth).catch(() => undefined);
+        await authApi.signOut(auth).catch(() => undefined);
         await syncServerSession(null).catch((error: unknown) => logProfileBootstrapFailure('session', error));
         const sessionFailure = (cause as { code?: string })?.code === 'auth/session-creation-failed';
         const error = new Error(sessionFailure
@@ -263,17 +292,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     pass: string,
     displayName: string
   ): Promise<{ verificationDelivery: VerificationDelivery; profileSaved: boolean }> => {
+    const { authApi, auth } = await getFirebaseServices();
     setIsLoading(true);
     authOperationInProgress.current = true;
     try {
       // This is the only step that determines whether registration itself failed.
-      const cred = await createUserWithEmailAndPassword(auth, email, pass);
+      const cred = await authApi.createUserWithEmailAndPassword(auth, email, pass);
 
       // Follow-up operations can fail after Firebase has permanently created the account.
       // Report those outcomes separately so the UI never suggests the account is absent.
       let profileSaved = true;
       try {
-        await updateProfile(cred.user, { displayName });
+        await authApi.updateProfile(cred.user, { displayName });
       } catch (error) {
         profileSaved = false;
         console.error('Account created, but the Firebase display name could not be saved:', error);
@@ -290,7 +320,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setFirebaseUser(null);
       setRole('customer');
       try {
-        await signOut(auth);
+        await authApi.signOut(auth);
       } catch (error) {
         // The account and verification result are still valid; onAuthStateChanged
         // will reconcile local state if sign-out cannot complete immediately.
@@ -305,16 +335,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const loginWithGoogle = async () => {
+    const { authApi, auth } = await getFirebaseServices();
     setIsLoading(true);
     authOperationInProgress.current = true;
     try {
-      const provider = new GoogleAuthProvider();
-      const cred = await signInWithPopup(auth, provider);
+      const provider = new authApi.GoogleAuthProvider();
+      const cred = await authApi.signInWithPopup(auth, provider);
       let profile: UserProfile;
       try {
         profile = await loadAuthenticatedProfile(cred.user);
       } catch (cause) {
-        await signOut(auth).catch(() => undefined);
+        await authApi.signOut(auth).catch(() => undefined);
         await syncServerSession(null).catch((error: unknown) => logProfileBootstrapFailure('session', error));
         const sessionFailure = (cause as { code?: string })?.code === 'auth/session-creation-failed';
         const error = new Error(sessionFailure
@@ -334,9 +365,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
+    const { authApi, auth } = await getFirebaseServices();
     setIsLoading(true);
     try {
-      await signOut(auth);
+      await authApi.signOut(auth);
       setUser(null);
       setFirebaseUser(null);
       setRole('customer');
@@ -352,14 +384,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const resetPassword = async (email: string) => {
-    await sendPasswordResetEmail(auth, email.trim(), getActionCodeSettings('/login'));
+    const { authApi, auth } = await getFirebaseServices();
+    await authApi.sendPasswordResetEmail(auth, email.trim(), getActionCodeSettings('/login'));
   };
 
   const resendVerificationEmail = async (email: string, password: string): Promise<VerificationDelivery> => {
+    const { authApi, auth } = await getFirebaseServices();
     authOperationInProgress.current = true;
     let signedInForResend = false;
     try {
-      const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+      const credential = await authApi.signInWithEmailAndPassword(auth, email.trim(), password);
       signedInForResend = true;
       if (credential.user.emailVerified) {
         throw Object.assign(new Error('This email is already verified. You can sign in now.'), {
@@ -369,7 +403,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return await sendVerificationEmail(credential.user);
     } finally {
       try {
-        if (signedInForResend && auth.currentUser) await signOut(auth);
+        if (signedInForResend && auth.currentUser) await authApi.signOut(auth);
       } finally {
         authOperationInProgress.current = false;
       }
