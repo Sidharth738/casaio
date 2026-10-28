@@ -60,7 +60,7 @@ function RegisterForm() {
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       if (code === 'auth/email-already-in-use') {
-        setError('An account with this email already exists. Please sign in instead.');
+        setError('This email is still registered in Firebase Authentication. Deleting the Firestore profile does not delete the login account. Please sign in or use Forgot password.');
       } else if (code === 'auth/weak-password') {
         setError('Please choose a stronger password.');
       } else {

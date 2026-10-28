@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/Button';
@@ -13,15 +13,30 @@ export default function ForgotPasswordPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+    const timer = window.setInterval(() => {
+      setCooldownSeconds((current) => Math.max(0, current - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [cooldownSeconds]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (isLoading) return;
+    if (isLoading || cooldownSeconds > 0) return;
     setError(null);
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setError('Enter a valid email address and try again.');
+      return;
+    }
     setIsLoading(true);
 
     try {
-      await resetPassword(email);
+      await resetPassword(normalizedEmail);
+      setCooldownSeconds(30);
       setIsSuccess(true);
     } catch (cause: unknown) {
       const code = (cause as { code?: string })?.code;
@@ -101,7 +116,7 @@ export default function ForgotPasswordPage() {
           We&apos;ll only use this address to send account recovery instructions.
         </p>
         <Button type="submit" variant="primary" size="lg" isLoading={isLoading} className="w-full">
-          {isLoading ? 'Sending instructions' : 'Send reset link'}
+          {isLoading ? 'Sending instructions' : cooldownSeconds > 0 ? `Try again in ${cooldownSeconds}s` : 'Send reset link'}
         </Button>
       </form>
 

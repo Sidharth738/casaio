@@ -1,8 +1,6 @@
-import nodemailer from 'nodemailer';
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase/admin';
-
-const CONTACT_EMAIL = 'casaio.official@gmail.com';
+import { isValidEmail, sendContactNotification } from '@/lib/email/contact-mail';
 
 export const runtime = 'nodejs';
 
@@ -25,7 +23,7 @@ export async function POST(request: Request) {
   const email = typeof payload.email === 'string' ? payload.email.trim() : '';
   const message = typeof payload.message === 'string' ? payload.message.trim() : '';
 
-  if (!email || !/^\S+@\S+\.\S+$/.test(email) || !message) {
+  if (!isValidEmail(email) || !message) {
     return Response.json({ error: 'Enter a valid email address and message.' }, { status: 400 });
   }
 
@@ -43,31 +41,14 @@ export async function POST(request: Request) {
     createdAt: FieldValue.serverTimestamp(),
   });
 
-  const smtpUser = process.env.CONTACT_EMAIL_USER;
-  const smtpPassword = process.env.CONTACT_EMAIL_APP_PASSWORD;
-
-  if (!smtpUser || !smtpPassword) {
+  if (!process.env.CONTACT_EMAIL_USER || !process.env.CONTACT_EMAIL_APP_PASSWORD) {
     console.error('Contact email is not configured. Set CONTACT_EMAIL_USER and CONTACT_EMAIL_APP_PASSWORD.');
     await messageRef.update({ emailStatus: 'failed' });
     return Response.json({ error: 'Email service is not configured yet.' }, { status: 503 });
   }
 
   try {
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: smtpUser,
-        pass: smtpPassword,
-      },
-    });
-
-    await transporter.sendMail({
-      from: smtpUser,
-      to: CONTACT_EMAIL,
-      replyTo: email,
-      subject: `Casaio contact${name ? ` from ${name}` : ''}`,
-      text: `Name: ${name || 'Not provided'}\nEmail: ${email}\n\nMessage:\n${message}`,
-    });
+    await sendContactNotification({ name, email, message });
 
     await messageRef.update({
       emailStatus: 'sent',

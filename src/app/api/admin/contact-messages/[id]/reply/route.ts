@@ -1,8 +1,8 @@
-import nodemailer from 'nodemailer';
 import { FieldValue } from 'firebase-admin/firestore';
 import type { NextRequest } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
 import { requireServerRole } from '@/lib/firebase/server-auth';
+import { isValidEmail, sendContactReply } from '@/lib/email/contact-mail';
 
 export const runtime = 'nodejs';
 
@@ -25,28 +25,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   const original = messageSnapshot.data() || {};
   const recipient = typeof original.email === 'string' ? original.email : '';
-  if (!recipient || !/^\S+@\S+\.\S+$/.test(recipient)) {
+  if (!isValidEmail(recipient)) {
     return Response.json({ error: 'The customer email address is invalid.' }, { status: 400 });
   }
 
-  const smtpUser = process.env.CONTACT_EMAIL_USER;
-  const smtpPassword = process.env.CONTACT_EMAIL_APP_PASSWORD;
-  if (!smtpUser || !smtpPassword) {
+  if (!process.env.CONTACT_EMAIL_USER || !process.env.CONTACT_EMAIL_APP_PASSWORD) {
     return Response.json({ error: 'Email service is not configured yet.' }, { status: 503 });
   }
 
-  const transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: smtpUser, pass: smtpPassword },
-  });
-
   try {
-    await transporter.sendMail({
-      from: smtpUser,
-      to: recipient,
-      replyTo: smtpUser,
-      subject: 'Re: Casaio contact request',
-      text: `Hi ${original.name || 'there'},\n\n${reply}\n\n--- Original message ---\n${original.message || ''}`,
+    await sendContactReply({
+      name: typeof original.name === 'string' ? original.name : '',
+      email: recipient,
+      originalMessage: typeof original.message === 'string' ? original.message : '',
+      reply,
     });
   } catch (error) {
     console.error('Contact reply SMTP delivery failed:', error instanceof Error ? error.message : 'Unknown error');
