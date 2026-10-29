@@ -27,7 +27,7 @@ const nextConfig: NextConfig = {
       hostname,
     })),
   },
-  productionBrowserSourceMaps: true,
+  productionBrowserSourceMaps: false,
   async headers() {
     return [
       {

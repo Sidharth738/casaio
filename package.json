@@ -10,9 +10,11 @@
     "seo:check": "node scripts/seo-check.mjs",
     "preflight:local": "node scripts/local-config-preflight.mjs",
     "seed": "tsx src/scripts/seed.ts",
-    "test": "tsx --test src/**/*.test.*",
+    "test": "tsx --test \"src/**/*.test.*\"",
+    "test:security-routes": "tsx --test tests/api-security-routes.test.mjs",
     "test:e2e:refunds": "playwright test --config=playwright.refunds.config.mjs",
-    "test:rules": "firebase emulators:exec --project demo-casaio-rules --only firestore \"tsx --test tests/firestore.rules.test.mjs\""
+    "test:rules": "firebase emulators:exec --project demo-casaio-rules --only firestore \"tsx --test tests/firestore.rules.test.mjs\"",
+    "test:storage-rules": "firebase emulators:exec --project demo-casaio-rules --only auth,firestore,storage \"tsx --test tests/storage.rules.test.mjs\""
   },
   "dependencies": {
     "@types/nodemailer": "^8.0.2",

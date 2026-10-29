@@ -1,6 +1,8 @@
 import { FieldValue } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase/admin';
 import { isValidEmail, sendContactNotification } from '@/lib/email/contact-mail';
+import { consumeProductionRateLimit, getClientAddress } from '@/lib/security/rate-limit';
+import { readBoundedBody } from '@/lib/security/bounded-body';
 
 export const runtime = 'nodejs';
 
@@ -11,10 +13,20 @@ type ContactPayload = {
 };
 
 export async function POST(request: Request) {
+  const body = await readBoundedBody(request, 12_000);
+  if (!body) return Response.json({ error: 'Request is too large.' }, { status: 413 });
+  const contentLength = Number(request.headers.get('content-length') || 0);
+  if (contentLength > 12_000) return Response.json({ error: 'Request is too large.' }, { status: 413 });
+  if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) {
+    return Response.json({ error: 'JSON request required.' }, { status: 415 });
+  }
+  const rate = await consumeProductionRateLimit(`contact:${getClientAddress(request)}`, 5, 3600);
+  if (!rate.available) return Response.json({ error: 'Contact service is temporarily unavailable.' }, { status: 503, headers: { 'Retry-After': String(rate.retryAfterSeconds) } });
+  if (!rate.allowed) return new Response(JSON.stringify({ error: 'Too many requests. Please try again later.' }), { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': String(rate.retryAfterSeconds) } });
   let payload: ContactPayload;
 
   try {
-    payload = await request.json() as ContactPayload;
+    payload = JSON.parse(new TextDecoder().decode(body)) as ContactPayload;
   } catch {
     return Response.json({ error: 'Invalid request.' }, { status: 400 });
   }

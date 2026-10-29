@@ -54,10 +54,12 @@ export default async function HomePage() {
   ];
 
   let activeCategories: Category[] = [];
-  try {
-    activeCategories = await getPublicCategories();
-  } catch {
-    // Keep the curated fallback while Firestore is unavailable.
+  if (process.env.NEXT_PHASE !== 'phase-production-build') {
+    try {
+      activeCategories = await getPublicCategories();
+    } catch {
+      // Keep the curated fallback while Firestore is unavailable.
+    }
   }
   const categories = activeCategories.length > 0
     ? activeCategories.slice(0, 8).map((category, index) => ({
@@ -69,10 +71,12 @@ export default async function HomePage() {
     : fallbackCategories;
 
   let activeProducts: Product[] = [];
-  try {
-    activeProducts = (await getPublicProductPage({ sortBy: 'newest' })).products;
-  } catch {
-    // Keep the curated fallback while Firestore is unavailable.
+  if (process.env.NEXT_PHASE !== 'phase-production-build') {
+    try {
+      activeProducts = (await getPublicProductPage({ sortBy: 'newest' })).products;
+    } catch {
+      // Keep the curated fallback while Firestore is unavailable.
+    }
   }
   const showcaseProducts = activeProducts.slice(0, 8);
 

@@ -9,19 +9,28 @@ service firebase.storage {
     function isOwner(userId) {
       return isAuthenticated() &&
         request.auth.uid == userId &&
-        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.status != 'suspended';
+        firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.keys().hasAll(['status']) &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.status == 'active';
     }
 
     function isSeller() {
       return isAuthenticated() &&
+        firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+        firestore.exists(/databases/(default)/documents/sellers/$(request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.keys().hasAll(['role', 'status']) &&
+        firestore.get(/databases/(default)/documents/sellers/$(request.auth.uid)).data.keys().hasAll(['status']) &&
         firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'seller' &&
-        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.status != 'suspended';
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.status == 'active' &&
+        firestore.get(/databases/(default)/documents/sellers/$(request.auth.uid)).data.status == 'approved';
     }
     
     function isAdmin() {
       return isAuthenticated() &&
+        firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.keys().hasAll(['role', 'status']) &&
         firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role == 'admin' &&
-        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.status != 'suspended';
+        firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.status == 'active';
     }
     
     function isImage() {
@@ -39,8 +48,10 @@ service firebase.storage {
     // Product Images: Uploaded by seller, public read
     match /products/{sellerId}/{imageId} {
       allow read: if true;
-      allow write: if (isSeller() && request.auth.uid == sellerId && isMedia() || isAdmin());
-      allow delete: if (isSeller() && request.auth.uid == sellerId || isAdmin());
+      allow write: if ((isSeller() && request.auth.uid == sellerId || isAdmin()) && isMedia() &&
+        ((request.resource.contentType.matches('image/.*') && request.resource.size <= 10 * 1024 * 1024) ||
+         (request.resource.contentType.matches('video/.*') && request.resource.size <= 50 * 1024 * 1024)));
+      allow delete: if ((isSeller() && request.auth.uid == sellerId) || isAdmin());
     }
 
     // Category cover images are uploaded by administrators only.
@@ -60,7 +71,8 @@ service firebase.storage {
     // Seller KYC Documents: Read/write only by seller and admin
     match /sellers/{sellerId}/kyc/{docId} {
       allow read: if isOwner(sellerId) || isAdmin();
-      allow write: if isOwner(sellerId) && isBelowMaxSize(10);
+      allow write: if isOwner(sellerId) && isImage() && isBelowMaxSize(10) ||
+        isOwner(sellerId) && request.resource.contentType == 'application/pdf' && isBelowMaxSize(10);
       allow delete: if isAdmin();
     }
 
