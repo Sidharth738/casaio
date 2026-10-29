@@ -16,31 +16,28 @@ export function ContactWidget() {
   const floatingButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    let frame: number | null = null;
+    const footer = document.querySelector<HTMLElement>('[data-site-footer]');
+    const button = floatingButtonRef.current;
+    if (!footer || !button || !('IntersectionObserver' in window)) return;
 
-    const updateSurface = () => {
-      if (frame !== null) return;
-      frame = window.requestAnimationFrame(() => {
-        frame = null;
-        const button = floatingButtonRef.current;
-        const footer = document.querySelector<HTMLElement>('[data-site-footer]');
-        if (!button || !footer) return;
-
-        const buttonRect = button.getBoundingClientRect();
-        const footerRect = footer.getBoundingClientRect();
-        const overlapsFooter = buttonRect.bottom > footerRect.top && buttonRect.top < footerRect.bottom;
-        setIsOverFooter(overlapsFooter);
-      });
+    let observer: IntersectionObserver;
+    const observeFooter = () => {
+      observer?.disconnect();
+      // Observe only the fixed button's vertical band at the bottom of the viewport.
+      const buttonTop = button.getBoundingClientRect().top;
+      const bottom = Math.max(0, window.innerHeight - buttonTop);
+      observer = new IntersectionObserver(
+        ([entry]) => setIsOverFooter(entry.isIntersecting),
+        { rootMargin: `-${Math.max(0, window.innerHeight - bottom)}px 0px -16px 0px` },
+      );
+      observer.observe(footer);
     };
 
-    updateSurface();
-    window.addEventListener('scroll', updateSurface, { passive: true });
-    window.addEventListener('resize', updateSurface);
-
+    observeFooter();
+    window.addEventListener('resize', observeFooter);
     return () => {
-      window.removeEventListener('scroll', updateSurface);
-      window.removeEventListener('resize', updateSurface);
-      if (frame !== null) window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', observeFooter);
+      observer?.disconnect();
     };
   }, []);
 

@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
   ...(process.env.CASAIO_PLAYWRIGHT_TEST === 'true' ? { distDir: '.next/playwright' } : {}),
   images: {
     formats: ['image/avif', 'image/webp'],
+    // Keep the storefront's existing per-image quality settings valid so
+    // Next.js can generate the intended smaller responsive image variants.
+    qualities: [60, 65, 75],
     minimumCacheTTL: 31536000,
     localPatterns: [
       {
