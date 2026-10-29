@@ -2,7 +2,7 @@ import 'server-only';
 
 import { createHash } from 'node:crypto';
 import { FieldValue } from 'firebase-admin/firestore';
-import type { DocumentReference, DocumentSnapshot, Firestore } from 'firebase-admin/firestore';
+import type { DocumentReference, DocumentSnapshot, Firestore, Transaction } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase/admin';
 import { getActivePaymentAttemptRef, getCheckoutCoordinationRef } from '@/lib/payment/attempts';
 import { buildCancellationInventoryUpdates } from '@/lib/orders/cancellation-inventory';
@@ -137,7 +137,7 @@ export async function recordRefundReconciliationAction(
   const orderRef = db.collection('orders').doc(orderId);
   const attemptRef = getRefundAttemptRef(db, orderId, attemptId);
   const auditRef = getRefundReconciliationAuditRef(db, orderId, audit.actorUid, audit.actionId);
-  return db.runTransaction(async (transaction) => {
+  return db.runTransaction(async (transaction: Transaction) => {
     const [orderSnapshot, attemptSnapshot, auditSnapshot] = await Promise.all([
       transaction.get(orderRef), transaction.get(attemptRef), transaction.get(auditRef),
     ]);
@@ -181,7 +181,7 @@ export async function reserveCancellationRefundAttempt(
   const orderRef = db.collection('orders').doc(orderId);
   const attemptsCollection = orderRef.collection('refundAttempts');
   const newAttemptRef = attemptsCollection.doc();
-  return db.runTransaction(async (transaction) => {
+  return db.runTransaction(async (transaction: Transaction) => {
     const orderSnapshot = await transaction.get(orderRef);
     if (!orderSnapshot.exists) return { kind: 'not_found' as const };
     const order = orderSnapshot.data() as Record<string, unknown> | undefined;
@@ -252,7 +252,7 @@ export async function markRefundReconciliationRequired(
 ) {
   const orderRef = db.collection('orders').doc(orderId);
   const attemptRef = getRefundAttemptRef(db, orderId, attemptId);
-  return db.runTransaction(async (transaction) => {
+  return db.runTransaction(async (transaction: Transaction) => {
     const [orderSnapshot, attemptSnapshot] = await Promise.all([
       transaction.get(orderRef), transaction.get(attemptRef),
     ]);
@@ -287,7 +287,7 @@ export async function transitionRefundAttempt(
   const auditRef = operatorAudit
     ? getRefundReconciliationAuditRef(db, orderId, operatorAudit.actorUid, operatorAudit.actionId)
     : null;
-  return db.runTransaction(async (transaction) => {
+  return db.runTransaction(async (transaction: Transaction) => {
     const reads = [transaction.get(orderRef), transaction.get(attemptRef)];
     if (auditRef) reads.push(transaction.get(auditRef));
     const [orderSnapshot, attemptSnapshot, auditSnapshot] = await Promise.all(reads);

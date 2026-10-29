@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { adminDb } from '@/lib/firebase/admin';
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import type { Category, Product, ProductFilterParams } from '@/types';
 import { toPublicProduct } from '@/lib/products/public-projection';
 
@@ -11,8 +12,8 @@ export async function getPublicCategories(): Promise<Category[]> {
     .where('isActive', '==', true)
     .get();
   return snapshot.docs
-    .map((document) => ({ id: document.id, ...document.data() }) as Category)
-    .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    .map((document: QueryDocumentSnapshot) => ({ id: document.id, ...document.data() }) as Category)
+    .sort((a: Category, b: Category) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 }
 
 export async function getPublicCategoryBySlug(slug: string): Promise<Category | null> {
@@ -29,7 +30,7 @@ export async function getPublicProducts(): Promise<Product[]> {
     .where('status', '==', 'active')
     .limit(500)
     .get();
-  return snapshot.docs.map((doc) => toPublicProduct({ id: doc.id, ...doc.data() } as Product));
+  return snapshot.docs.map((doc: QueryDocumentSnapshot) => toPublicProduct({ id: doc.id, ...doc.data() } as Product));
 }
 
 export async function getPublicProductPage(filters: ProductFilterParams = {}) {

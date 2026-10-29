@@ -4,7 +4,7 @@ import { requireServerRole } from '@/lib/firebase/server-auth';
 import { getProductDeletionBlockReason } from '@/lib/products/deletion';
 import { revalidatePath } from 'next/cache';
 import { processSellerProductUpdate } from '@/lib/products/seller-update';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 export async function PUT(
   req: NextRequest,
@@ -39,7 +39,7 @@ export async function PUT(
         },
         findProductIdsBySlug: async (slug) => {
           const snapshot = await adminDb.collection('products').where('slug', '==', slug).get();
-          return snapshot.docs.map((product) => product.id);
+          return snapshot.docs.map((product: QueryDocumentSnapshot) => product.id);
         },
         updateProduct: async (productId, updates) => {
           const { costPerItem, ...publicUpdates } = updates;

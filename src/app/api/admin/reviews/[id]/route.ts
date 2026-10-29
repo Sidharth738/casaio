@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
+import type { Transaction, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import type { Review } from '@/types';
 import { requireServerRole } from '@/lib/firebase/server-auth';
 import { calculatePublishedRatings } from '@/lib/reviews/aggregate';
@@ -35,7 +36,7 @@ export async function POST(
       };
     }
 
-    const result = await adminDb.runTransaction(async (transaction) => {
+    const result = await adminDb.runTransaction(async (transaction: Transaction) => {
       const reviewSnap = await transaction.get(reviewRef);
       if (!reviewSnap.exists) return 'missing' as const;
       const reviewData = reviewSnap.data() as Review;
@@ -47,7 +48,7 @@ export async function POST(
         adminDb.collection('reviews').where('productId', '==', reviewData.productId)
       );
       const updatedReview = { ...reviewData, ...updates } as Review;
-      const allReviews = reviewsSnap.docs.map((doc) =>
+      const allReviews = reviewsSnap.docs.map((doc: QueryDocumentSnapshot) =>
         doc.id === id ? updatedReview : doc.data() as Review
       );
 
@@ -81,7 +82,7 @@ export async function DELETE(
     if (!await requireServerRole(_req, ['admin'])) return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     const { id } = await params;
     const reviewRef = adminDb.collection('reviews').doc(id);
-    const result = await adminDb.runTransaction(async (transaction) => {
+    const result = await adminDb.runTransaction(async (transaction: Transaction) => {
       const snap = await transaction.get(reviewRef);
       if (!snap.exists) return 'missing' as const;
       const reviewData = snap.data() as Review;
@@ -92,8 +93,8 @@ export async function DELETE(
         adminDb.collection('reviews').where('productId', '==', reviewData.productId)
       );
       const remainingReviews = reviewsSnap.docs
-        .filter((doc) => doc.id !== id)
-        .map((doc) => doc.data() as Review);
+        .filter((doc: QueryDocumentSnapshot) => doc.id !== id)
+        .map((doc: QueryDocumentSnapshot) => doc.data() as Review);
       transaction.delete(reviewRef);
       transaction.update(productRef, {
         ratings: calculatePublishedRatings(remainingReviews),

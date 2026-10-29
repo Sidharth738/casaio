@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { adminDb } from '@/lib/firebase/admin';
-import type { DocumentReference } from 'firebase-admin/firestore';
+import type { DocumentReference, Transaction } from 'firebase-admin/firestore';
 import { requireServerUser } from '@/lib/firebase/server-auth';
 import type { OrderItem } from '@/types';
 import { getActivePaymentAttemptRef, getCheckoutCoordinationRef } from '@/lib/payment/attempts';
@@ -250,7 +250,7 @@ export async function POST(
     const onlineResult = await processOnlineCancellation(orderId, user.uid);
     if (onlineResult) return onlineResult;
     const orderRef = adminDb.collection('orders').doc(orderId);
-    const reservation = await adminDb.runTransaction(async (transaction) => {
+    const reservation = await adminDb.runTransaction(async (transaction: Transaction) => {
       const snapshot = await transaction.get(orderRef);
       if (!snapshot.exists) return { error: 'Order not found', status: 404 } as const;
 
@@ -291,7 +291,7 @@ export async function POST(
 
     const now = new Date().toISOString();
     try {
-      const completion = await adminDb.runTransaction(async (transaction) => {
+      const completion = await adminDb.runTransaction(async (transaction: Transaction) => {
         const snapshot = await transaction.get(orderRef);
         if (!snapshot.exists) throw new Error('Order not found while completing cancellation');
         const current = snapshot.data()!;
@@ -387,7 +387,7 @@ export async function POST(
     } catch (error) {
       // If Razorpay accepted a refund but Firestore completion failed, allow a retry.
       // The retry checks for the existing refund receipt before creating another one.
-      await adminDb.runTransaction(async (transaction) => {
+      await adminDb.runTransaction(async (transaction: Transaction) => {
         const snapshot = await transaction.get(orderRef);
         if (snapshot.exists && snapshot.data()?.cancellationStatus === 'processing') {
           transaction.update(orderRef, { cancellationStatus: 'failed', updatedAt: new Date().toISOString() });

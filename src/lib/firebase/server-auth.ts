@@ -4,7 +4,7 @@ import { adminAuth, adminDb } from '@/lib/firebase/admin';
 export type ServerUser = { uid: string; email?: string; role: string };
 
 export async function getServerUser(request: NextRequest): Promise<ServerUser | null> {
-  const sessionCookie = request.cookies.get('casaio_session')?.value;
+  const sessionCookie = request.cookies?.get?.('casaio_session')?.value ?? request.cookies?.get('casaio_session')?.value;
   if (!sessionCookie) return null;
 
   try {

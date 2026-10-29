@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase/admin';
 import { getCaptureReconciliationReason } from '@/lib/payment/attempt-state';
 import { getActivePaymentAttemptRef, getCheckoutCoordinationRef } from '@/lib/payment/attempts';
@@ -126,7 +126,7 @@ export async function POST(request: NextRequest) {
       }
 
       const now = new Date().toISOString();
-      const refundResult = await adminDb.runTransaction(async (transaction) => {
+      const refundResult = await adminDb.runTransaction(async (transaction: Transaction) => {
         const snapshot = await transaction.get(order.ref);
         const current = snapshot.data();
         if (!snapshot.exists || !current || current.payment?.method !== 'razorpay' ||
@@ -257,7 +257,7 @@ export async function POST(request: NextRequest) {
     if (event.event === 'payment.authorized') {
       if (payment.status !== 'authorized') return NextResponse.json({ error: 'Payment status does not match the event' }, { status: 400 });
       const now = new Date().toISOString();
-      const result = await adminDb.runTransaction(async (transaction) => {
+      const result = await adminDb.runTransaction(async (transaction: Transaction) => {
         const snapshot = await transaction.get(orderRef);
         const order = snapshot.data();
         if (!snapshot.exists || !order || order.payment?.method !== 'razorpay' || order.payment?.razorpayOrderId !== payment.order_id) return 'missing';
@@ -323,7 +323,7 @@ export async function POST(request: NextRequest) {
     if (payment.status !== 'captured') return NextResponse.json({ error: 'Payment status does not match the event' }, { status: 400 });
 
     const now = new Date().toISOString();
-    const result = await adminDb.runTransaction(async (transaction) => {
+    const result = await adminDb.runTransaction(async (transaction: Transaction) => {
       const snapshot = await transaction.get(orderRef);
       const order = snapshot.data();
       const activeAttemptRef = order?.customerId ? getActivePaymentAttemptRef(order.customerId) : null;

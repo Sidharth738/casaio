@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import { adminDb } from '@/lib/firebase/admin';
-import type { DocumentReference } from 'firebase-admin/firestore';
+import type { DocumentReference, Transaction, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import type {
   Order,
   OrderItem,
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
       const priorOrder = priorOrderSnap.data();
       if (priorOrder?.payment?.method === 'razorpay' &&
           (priorOrder.payment.status === 'pending' || priorOrder.payment.status === 'authorized')) {
-        const lockResult = await adminDb.runTransaction(async (transaction) => {
+        const lockResult = await adminDb.runTransaction(async (transaction: Transaction) => {
           const [lockSnap, orderSnap] = await Promise.all([
             transaction.get(activeAttemptRef),
             transaction.get(priorOrderRef),
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
 
     // Heal unresolved orders created before the active-attempt lock was introduced.
     const existingOrders = await adminDb.collection('orders').where('customerId', '==', customerId).get();
-    const legacyUnresolved = existingOrders.docs.find((doc) => {
+    const legacyUnresolved = existingOrders.docs.find((doc: QueryDocumentSnapshot) => {
       const existing = doc.data();
       return existing.payment?.method === 'razorpay' &&
         (existing.payment?.status === 'pending' || existing.payment?.status === 'authorized' ||
@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
     });
     if (legacyUnresolved) {
       const order = legacyUnresolved.data();
-      await adminDb.runTransaction(async (transaction) => {
+      await adminDb.runTransaction(async (transaction: Transaction) => {
         const [lockSnap, orderSnap] = await Promise.all([
           transaction.get(activeAttemptRef),
           transaction.get(legacyUnresolved.ref),
@@ -304,7 +304,7 @@ export async function POST(req: NextRequest) {
 
     // 5. Batch write: save order, atomically verify and deduct stock, and empty user's cart
     const cartRef = adminDb.collection('carts').doc(customerId);
-    const transactionResult = await adminDb.runTransaction(async (transaction) => {
+    const transactionResult = await adminDb.runTransaction(async (transaction: Transaction) => {
       const [existingRequest, activeAttempt, checkoutCoordination] = await Promise.all([
         transaction.get(checkoutRequestRef),
         transaction.get(activeAttemptRef),

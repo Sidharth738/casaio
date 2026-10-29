@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
+import type { Transaction, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import type { Review } from '@/types';
 import { requireServerUser } from '@/lib/firebase/server-auth';
 import { calculatePublishedRatings } from '@/lib/reviews/aggregate';
@@ -96,18 +97,18 @@ export async function POST(req: NextRequest) {
 
     const reviewsCollection = adminDb.collection('reviews');
     const reviewRef = reviewsCollection.doc();
-    const result = await adminDb.runTransaction(async (transaction) => {
+    const result = await adminDb.runTransaction(async (transaction: Transaction) => {
       const productSnap = await transaction.get(productRef);
       if (!productSnap.exists) return 'product_missing' as const;
 
       const existingReviews = await transaction.get(
         reviewsCollection.where('productId', '==', productId)
       );
-      if (existingReviews.docs.some((doc) => doc.data().userId === userId)) {
+      if (existingReviews.docs.some((doc: QueryDocumentSnapshot) => doc.data().userId === userId)) {
         return 'duplicate' as const;
       }
 
-      const allReviews = [reviewData, ...existingReviews.docs.map((doc) => doc.data() as Review)];
+      const allReviews = [reviewData, ...existingReviews.docs.map((doc: QueryDocumentSnapshot) => doc.data() as Review)];
       transaction.create(reviewRef, reviewData);
       transaction.update(productRef, {
         ratings: calculatePublishedRatings(allReviews),

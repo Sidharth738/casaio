@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import Razorpay from 'razorpay';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, type Transaction } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase/admin';
 import { requireServerUser } from '@/lib/firebase/server-auth';
 import { configureRazorpayTimeout, getActivePaymentAttemptRef, getCaptureReconciliationReason, isCapturedPaymentForOrder } from '@/lib/payment/attempts';
@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString();
-    const result = await adminDb.runTransaction(async (transaction) => {
+    const result = await adminDb.runTransaction(async (transaction: Transaction) => {
       const snapshot = await transaction.get(orderRef);
       const activeAttemptRef = getActivePaymentAttemptRef(user.uid);
       const activeAttemptSnap = await transaction.get(activeAttemptRef);

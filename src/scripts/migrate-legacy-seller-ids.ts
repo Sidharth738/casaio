@@ -20,7 +20,7 @@
  */
 
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { getFirestore, type Firestore, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { deriveSellerIdsFromItems } from '../lib/orders/legacy-compatibility';
@@ -145,7 +145,7 @@ export async function runMigration(options: RunMigrationOptions = {}) {
   const ordersSnapshot = await db.collection('orders').get();
   logger.log(`Found ${ordersSnapshot.size} total orders.`);
 
-  const orders: OrderRecord[] = ordersSnapshot.docs.map((doc) => ({
+  const orders: OrderRecord[] = ordersSnapshot.docs.map((doc: QueryDocumentSnapshot) => ({
     id: doc.id,
     ...(doc.data() as Omit<OrderRecord, 'id'>),
   }));

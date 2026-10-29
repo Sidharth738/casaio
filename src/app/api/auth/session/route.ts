@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import type { Transaction } from 'firebase-admin/firestore';
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest) {
     // Read, validate, and bootstrap the profile in one transaction. Competing
     // sign-ins must not overwrite a profile created by another request.
     const userDocRef = adminDb.collection('users').doc(uid);
-    const role = await adminDb.runTransaction(async (transaction) => {
+    const role = await adminDb.runTransaction(async (transaction: Transaction) => {
       const userDoc = await transaction.get(userDocRef);
       const profileRole = userDoc.exists
         ? (userDoc.data()?.role as string) || 'customer'
