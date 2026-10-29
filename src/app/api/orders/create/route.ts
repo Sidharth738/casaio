@@ -29,6 +29,11 @@ import {
 
 const CHECKOUT_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
 
+type LegacyCouponState = {
+  id: string;
+  state: ReturnType<typeof getLegacyCouponReservationState>;
+};
+
 function generateOrderNumber(): string {
   const timestamp = Date.now().toString().slice(-6);
   const randomChars = Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -249,7 +254,7 @@ export async function POST(req: NextRequest) {
         // Compatibility path for existing coupons created before the permanent
         // code registry. Fail closed if normalized legacy records are ambiguous.
         const allCoupons = await adminDb.collection('coupons').get();
-        const matchingCoupons = allCoupons.docs.filter((snapshot) => {
+        const matchingCoupons = allCoupons.docs.filter((snapshot: QueryDocumentSnapshot) => {
           const storedCode = snapshot.data().code;
           return typeof storedCode === 'string' && storedCode.trim().toUpperCase() === cleanCouponCode;
         });
@@ -470,13 +475,13 @@ export async function POST(req: NextRequest) {
           }
           legacyOrderCount = legacyOrders.docs.length;
 
-          const legacyStates = legacyOrders.docs.map((legacyOrder: QueryDocumentSnapshot) => ({
+          const legacyStates: LegacyCouponState[] = legacyOrders.docs.map((legacyOrder: QueryDocumentSnapshot) => ({
             id: legacyOrder.id,
             state: getLegacyCouponReservationState(
               legacyOrder.data(), couponRef!.id, currentCouponRule!.code
             ),
           }));
-          if (legacyStates.some(({ state }) => state === 'ambiguous')) {
+          if (legacyStates.some(({ state }: LegacyCouponState) => state === 'ambiguous')) {
             transaction.set(couponUsageRef, {
               state: 'blocked',
               couponId: couponRef.id,
@@ -487,10 +492,10 @@ export async function POST(req: NextRequest) {
             return { blocked: true, reason: 'coupon-usage-history-requires-reconciliation' };
           }
 
-          legacyUsageCount = legacyStates.filter(({ state }) => state && state !== 'released').length;
+          legacyUsageCount = legacyStates.filter(({ state }: LegacyCouponState) => state && state !== 'released').length;
           legacyReservationWrites = legacyStates
-            .filter(({ state }) => state && state !== 'released')
-            .map(({ id, state }) => ({
+            .filter(({ state }: LegacyCouponState) => state && state !== 'released')
+            .map(({ id, state }: LegacyCouponState) => ({
               ref: couponUsageRef!.collection('reservations').doc(id),
               state: state!,
             }));
