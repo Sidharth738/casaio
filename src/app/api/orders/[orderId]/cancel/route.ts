@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { adminDb } from '@/lib/firebase/admin';
+import type { DocumentReference } from 'firebase-admin/firestore';
 import { requireServerUser } from '@/lib/firebase/server-auth';
 import type { OrderItem } from '@/types';
 import { getActivePaymentAttemptRef, getCheckoutCoordinationRef } from '@/lib/payment/attempts';
@@ -298,7 +299,7 @@ export async function POST(
           throw new Error('Order cancellation state changed');
         }
 
-        let releaseCouponReservation: FirebaseFirestore.DocumentReference | null = null;
+        let releaseCouponReservation: DocumentReference | null = null;
         let nextCouponUsageCount: number | null = null;
         const couponId = current.couponApplied?.couponId;
         if (current.payment?.method === 'cod' && typeof couponId === 'string' &&

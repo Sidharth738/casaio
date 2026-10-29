@@ -2,7 +2,7 @@ import 'server-only';
 
 import { createHash } from 'node:crypto';
 import { FieldValue } from 'firebase-admin/firestore';
-import type { Firestore } from 'firebase-admin/firestore';
+import type { DocumentReference, DocumentSnapshot, Firestore } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase/admin';
 import { getActivePaymentAttemptRef, getCheckoutCoordinationRef } from '@/lib/payment/attempts';
 import { buildCancellationInventoryUpdates } from '@/lib/orders/cancellation-inventory';
@@ -357,10 +357,10 @@ export async function transitionRefundAttempt(
     }
 
     let inventory: ReturnType<typeof buildCancellationInventoryUpdates> | undefined;
-    let productRefs: FirebaseFirestore.DocumentReference[] = [];
-    let productSnapshots: FirebaseFirestore.DocumentSnapshot[] = [];
-    let activeAttemptSnapshot: FirebaseFirestore.DocumentSnapshot | undefined;
-    let checkoutCoordinationSnapshot: FirebaseFirestore.DocumentSnapshot | undefined;
+    let productRefs: DocumentReference[] = [];
+    let productSnapshots: DocumentSnapshot[] = [];
+    let activeAttemptSnapshot: DocumentSnapshot | undefined;
+    let checkoutCoordinationSnapshot: DocumentSnapshot | undefined;
     if (nextState === 'succeeded') {
       if (order.cancellationStatus !== 'processing' || !Array.isArray(order.items)) {
         return { kind: 'conflict' as const };
@@ -373,9 +373,9 @@ export async function transitionRefundAttempt(
         transaction.get(getActivePaymentAttemptRef(attempt.customerId)),
         transaction.get(getCheckoutCoordinationRef(attempt.customerId)),
       ]);
-      productSnapshots = reads.slice(0, productRefs.length) as FirebaseFirestore.DocumentSnapshot[];
-      activeAttemptSnapshot = reads[productRefs.length] as FirebaseFirestore.DocumentSnapshot;
-      checkoutCoordinationSnapshot = reads[productRefs.length + 1] as FirebaseFirestore.DocumentSnapshot;
+      productSnapshots = reads.slice(0, productRefs.length) as DocumentSnapshot[];
+      activeAttemptSnapshot = reads[productRefs.length] as DocumentSnapshot;
+      checkoutCoordinationSnapshot = reads[productRefs.length + 1] as DocumentSnapshot;
       const productData = new Map<string, Record<string, unknown>>();
       productSnapshots.forEach((snapshot, index) => {
         if (snapshot.exists) productData.set(productRefs[index].id, snapshot.data() || {});

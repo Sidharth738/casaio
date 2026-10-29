@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
+import type { DocumentReference } from 'firebase-admin/firestore';
 import type { FulfillmentStatus, OrderStatus, OrderItem } from '@/types';
 import { requireServerRole } from '@/lib/firebase/server-auth';
 import { getCouponUserUsageRefs } from '@/lib/coupons/user-usage';
@@ -149,7 +150,7 @@ export async function POST(
         orderData?.orderStatus || 'pending'
       );
 
-      let deliveredCouponReservation: FirebaseFirestore.DocumentReference | null = null;
+      let deliveredCouponReservation: DocumentReference | null = null;
       let consumeDeliveredCouponSlot = false;
       const couponId = orderData?.couponApplied?.couponId;
       if (newOrderStatus === 'delivered' && orderData?.payment?.method === 'cod' &&

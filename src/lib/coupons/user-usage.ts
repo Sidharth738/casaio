@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Order } from '@/types';
+import type { Firestore, Transaction } from 'firebase-admin/firestore';
 
 export const MAX_LEGACY_CUSTOMER_ORDERS_FOR_BOOTSTRAP = 8;
 
@@ -10,7 +11,7 @@ export function getCouponUserUsageKey(couponId: string, customerId: string): str
 }
 
 export function getCouponUserUsageRefs(
-  adminDb: FirebaseFirestore.Firestore,
+  adminDb: Firestore,
   couponId: string,
   customerId: string,
   orderId: string
@@ -21,8 +22,8 @@ export function getCouponUserUsageRefs(
 
 /** Captured online payments consume their existing held slot; the counter is unchanged. */
 export async function stageOnlineReservationConsumed(
-  transaction: FirebaseFirestore.Transaction,
-  adminDb: FirebaseFirestore.Firestore,
+  transaction: Transaction,
+  adminDb: Firestore,
   value: unknown,
   orderId: string,
   now: string

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import { adminDb } from '@/lib/firebase/admin';
+import type { DocumentReference } from 'firebase-admin/firestore';
 import type {
   Order,
   OrderItem,
@@ -230,7 +231,7 @@ export async function POST(req: NextRequest) {
 
     // 3. Resolve the unique normalized Firestore definition. Its authoritative
     // terms and usage counter are re-read and validated in the order transaction.
-    let couponRef: FirebaseFirestore.DocumentReference | null = null;
+    let couponRef: DocumentReference | null = null;
     if (couponCode !== undefined && couponCode !== null && typeof couponCode !== 'string') {
       return NextResponse.json({ error: 'Invalid coupon code.' }, { status: 400 });
     }
@@ -384,7 +385,7 @@ export async function POST(req: NextRequest) {
       const productSnaps = await Promise.all(productRefs.map((ref) => transaction.get(ref)));
       const couponSnap = couponRef ? await transaction.get(couponRef) : null;
 
-      const pendingStockUpdates: Array<{ ref: FirebaseFirestore.DocumentReference; payload: Record<string, unknown> }> = [];
+      const pendingStockUpdates: Array<{ ref: DocumentReference; payload: Record<string, unknown> }> = [];
 
       for (let index = 0; index < uniqueProductIds.length; index++) {
         const pId = uniqueProductIds[index];
@@ -421,11 +422,11 @@ export async function POST(req: NextRequest) {
 
       const { pricing, appliedCoupon } = calculateAuthoritativePricing(subtotal, currentCouponRule);
       const totalAmount = pricing.totalAmount;
-      let couponUsageRef: FirebaseFirestore.DocumentReference | null = null;
-      let couponReservationRef: FirebaseFirestore.DocumentReference | null = null;
+      let couponUsageRef: DocumentReference | null = null;
+      let couponReservationRef: DocumentReference | null = null;
       let couponUsageState: Record<string, unknown> | null = null;
       let couponReservationState: Record<string, unknown> | null = null;
-      let legacyReservationWrites: Array<{ ref: FirebaseFirestore.DocumentReference; state: string }> = [];
+      let legacyReservationWrites: Array<{ ref: DocumentReference; state: string }> = [];
       let legacyUsageCount = 0;
       let legacyOrderCount = 0;
 
