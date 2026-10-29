@@ -470,7 +470,7 @@ export async function POST(req: NextRequest) {
           }
           legacyOrderCount = legacyOrders.docs.length;
 
-          const legacyStates = legacyOrders.docs.map((legacyOrder) => ({
+          const legacyStates = legacyOrders.docs.map((legacyOrder: QueryDocumentSnapshot) => ({
             id: legacyOrder.id,
             state: getLegacyCouponReservationState(
               legacyOrder.data(), couponRef!.id, currentCouponRule!.code

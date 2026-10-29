@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import Razorpay from 'razorpay';
 import { NextRequest, NextResponse } from 'next/server';
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { requireServerRole } from '@/lib/firebase/server-auth';
 import { adminDb } from '@/lib/firebase/admin';
 import { getRazorpayConfiguration } from '@/lib/payment/razorpay-config';
@@ -31,6 +32,12 @@ type ProviderPayment = {
   amount?: unknown;
   amount_refunded?: unknown;
   currency?: unknown;
+};
+
+type ReconciliationCase = ReturnType<typeof safeAttempt> & {
+  orderId: string;
+  orderNumber?: string;
+  diagnosticCategory: string;
 };
 
 function isId(value: unknown): value is string {
@@ -165,11 +172,11 @@ export async function GET(request: NextRequest) {
             reconciliationRequired: order.payment?.reconciliationRequired === true,
             diagnosticCategory: safeDiagnosticCategory(order.payment?.reconciliationReason),
           },
-          attempts: attemptsSnapshot.docs.map((document) => {
+          attempts: attemptsSnapshot.docs.map((document: QueryDocumentSnapshot) => {
             const attempt = document.data();
             return isRefundAttempt(attempt) ? safeAttempt(attempt) : { id: document.id, state: 'invalid_record' };
           }),
-          history: auditsSnapshot.docs.map((document) => safeAudit(document.id, document.data())),
+          history: auditsSnapshot.docs.map((document: QueryDocumentSnapshot) => safeAudit(document.id, document.data())),
         },
       }, { headers: { 'Cache-Control': 'no-store' } });
     }
@@ -179,7 +186,7 @@ export async function GET(request: NextRequest) {
         .where('state', 'in', ['not_submitted', 'submission_unknown', 'provider_identified', 'failed', 'succeeded'])
         .limit(100)
         .get();
-      const cases = await Promise.all(snapshot.docs.map(async (document) => {
+      const cases: Array<ReconciliationCase | null> = await Promise.all(snapshot.docs.map(async (document: QueryDocumentSnapshot) => {
         const attempt = document.data();
         if (!isRefundAttempt(attempt)) return null;
         const parentOrderRef = document.ref.parent.parent;
@@ -193,7 +200,7 @@ export async function GET(request: NextRequest) {
         };
       }));
       return NextResponse.json({
-        refunds: cases.filter((item) => item !== null),
+        refunds: cases.filter((item): item is ReconciliationCase => item !== null),
       }, { headers: { 'Cache-Control': 'no-store' } });
     }
 
@@ -203,7 +210,7 @@ export async function GET(request: NextRequest) {
       .get();
 
     return NextResponse.json({
-      cases: snapshot.docs.map((document) => {
+      cases: snapshot.docs.map((document: QueryDocumentSnapshot) => {
         const order = document.data();
         return {
           orderId: document.id,

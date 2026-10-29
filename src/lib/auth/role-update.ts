@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { FieldValue, type DocumentReference, type Transaction } from 'firebase-admin/firestore';
+import { FieldValue, type DocumentReference, type DocumentSnapshot, type Transaction } from 'firebase-admin/firestore';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import type { UserRole } from '@/types';
 
@@ -38,7 +38,7 @@ export async function updateUserRoleWithAudit({
       ...relatedUpdates.map(({ ref }) => transaction.get(ref)),
     ]);
     if (!userSnapshot.exists) return { found: false as const, changed: false as const };
-    if (relatedSnapshots.some((snapshot) => !snapshot.exists)) {
+    if (relatedSnapshots.some((snapshot: DocumentSnapshot) => !snapshot.exists)) {
       return { found: false as const, changed: false as const };
     }
 
