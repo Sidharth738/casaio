@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'node:crypto';
 import Razorpay from 'razorpay';
-import { FieldValue } from 'firebase-admin/firestore';
+import { FieldValue, type Transaction, type QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase/admin';
 import { requireServerUser } from '@/lib/firebase/server-auth';
 import {
@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
       const ownedOrders = await adminDb.collection('orders')
         .where('customerId', '==', user.uid)
         .get();
-      const candidates = ownedOrders.docs.filter((document) =>
+      const candidates = ownedOrders.docs.filter((document: QueryDocumentSnapshot) =>
         isUnresolvedPaymentOrder(document.data(), user.uid)
       );
 
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest) {
 
       const candidate = candidates[0];
       failureCategory = 'firestore_transaction_failure';
-      const claim = await adminDb.runTransaction(async (transaction) => {
+      const claim = await adminDb.runTransaction(async (transaction: Transaction) => {
         const [currentLockSnap, currentOrderSnap] = await Promise.all([
           transaction.get(lockRef),
           transaction.get(candidate.ref),
@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
 
     if (order.payment?.status === 'captured') {
       failureCategory = 'firestore_transaction_failure';
-      await adminDb.runTransaction(async (transaction) => {
+      await adminDb.runTransaction(async (transaction: Transaction) => {
         const [currentOrderSnap, currentLockSnap] = await Promise.all([
           transaction.get(orderRef),
           transaction.get(lockRef),
@@ -206,7 +206,7 @@ export async function GET(request: NextRequest) {
         .filter((id): id is string => Boolean(id));
       const now = new Date().toISOString();
       failureCategory = 'firestore_transaction_failure';
-      const result = await adminDb.runTransaction(async (transaction) => {
+      const result = await adminDb.runTransaction(async (transaction: Transaction) => {
         const [currentOrderSnap, currentLockSnap] = await Promise.all([
           transaction.get(orderRef),
           transaction.get(lockRef),
@@ -277,7 +277,7 @@ export async function GET(request: NextRequest) {
     if (hasAuthorized) {
       const authorizedIds = authorizedPayments.map((payment) => payment.id).filter((id): id is string => Boolean(id));
       failureCategory = 'firestore_transaction_failure';
-      await adminDb.runTransaction(async (transaction) => {
+      await adminDb.runTransaction(async (transaction: Transaction) => {
         const snapshot = await transaction.get(orderRef);
         const currentOrder = snapshot.data();
         const currentNeedsReconciliation = currentOrder?.payment?.status === 'failed' || Boolean(currentOrder?.payment?.failureFinalizedAt) ||

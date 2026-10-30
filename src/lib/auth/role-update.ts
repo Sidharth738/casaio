@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { FieldValue, type DocumentReference } from 'firebase-admin/firestore';
+import { FieldValue, type DocumentReference, type DocumentSnapshot, type Transaction } from 'firebase-admin/firestore';
 import { adminAuth, adminDb } from '@/lib/firebase/admin';
 import type { UserRole } from '@/types';
 
@@ -32,13 +32,13 @@ export async function updateUserRoleWithAudit({
   const auditRef = adminDb.collection('roleChangeAudit').doc();
   const transactionTimestamp = updatedAt ?? new Date().toISOString();
 
-  return adminDb.runTransaction(async (transaction) => {
+  return adminDb.runTransaction(async (transaction: Transaction) => {
     const [userSnapshot, ...relatedSnapshots] = await Promise.all([
       transaction.get(userRef),
       ...relatedUpdates.map(({ ref }) => transaction.get(ref)),
     ]);
     if (!userSnapshot.exists) return { found: false as const, changed: false as const };
-    if (relatedSnapshots.some((snapshot) => !snapshot.exists)) {
+    if (relatedSnapshots.some((snapshot: DocumentSnapshot) => !snapshot.exists)) {
       return { found: false as const, changed: false as const };
     }
 

@@ -1,4 +1,5 @@
 import type { NextRequest } from 'next/server';
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase/admin';
 import { requireServerRole } from '@/lib/firebase/server-auth';
 
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
   }
 
   const snapshot = await adminDb.collection('contactMessages').orderBy('createdAt', 'desc').limit(100).get();
-  const messages = snapshot.docs.map((doc) => {
+  const messages = snapshot.docs.map((doc: QueryDocumentSnapshot) => {
     const data = doc.data();
     return {
       id: doc.id,

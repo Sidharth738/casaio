@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
+import type { Transaction, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { requireServerRole } from '@/lib/firebase/server-auth';
 import { validateCouponDefinition } from '@/lib/coupons/definition.mjs';
 
@@ -34,14 +35,14 @@ export async function POST(req: NextRequest) {
   const activate = body.isActive !== false;
 
   try {
-    await adminDb.runTransaction(async (transaction) => {
+    await adminDb.runTransaction(async (transaction: Transaction) => {
       // The registry serializes creation of a normalized code. The collection
       // scan also detects legacy records that predate the registry.
       const [registrySnap, existingCoupons] = await Promise.all([
         transaction.get(codeRef),
         transaction.get(couponsQuery),
       ]);
-      const normalizedMatches = existingCoupons.docs.filter((snapshot) => {
+      const normalizedMatches = existingCoupons.docs.filter((snapshot: QueryDocumentSnapshot) => {
         const existingCode = snapshot.data().code;
         return typeof existingCode === 'string' && existingCode.trim().toUpperCase() === checked.definition.code;
       });
@@ -95,7 +96,7 @@ export async function PATCH(req: NextRequest) {
 
   try {
     const couponRef = adminDb.collection('coupons').doc(body.id);
-    await adminDb.runTransaction(async (transaction) => {
+    await adminDb.runTransaction(async (transaction: Transaction) => {
       const snapshot = await transaction.get(couponRef);
       if (!snapshot.exists) throw new Error('COUPON_NOT_FOUND');
       const current = snapshot.data() || {};

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase/admin';
 import { requireServerRole } from '@/lib/firebase/server-auth';
 import { revalidatePath } from 'next/cache';
@@ -63,7 +64,7 @@ export async function PATCH(req: NextRequest) {
     const current = await ref.get();
     if (!current.exists) return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     const duplicate = await adminDb.collection('categories').where('slug', '==', slug).limit(2).get();
-    if (duplicate.docs.some((doc) => doc.id !== id)) {
+    if (duplicate.docs.some((doc: QueryDocumentSnapshot) => doc.id !== id)) {
       return NextResponse.json({ error: 'A category with this slug already exists' }, { status: 409 });
     }
     await ref.update({

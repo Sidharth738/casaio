@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { revalidatePath } from 'next/cache';
 import { adminDb } from '@/lib/firebase/admin';
 import { requireServerRole } from '@/lib/firebase/server-auth';
@@ -32,7 +33,7 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
 
     if (updates.slug && updates.slug !== currentProduct.slug) {
       const duplicate = await adminDb.collection('products').where('slug', '==', updates.slug).limit(2).get();
-      if (duplicate.docs.some((doc) => doc.id !== id)) {
+      if (duplicate.docs.some((doc: QueryDocumentSnapshot) => doc.id !== id)) {
         return NextResponse.json({ error: 'A product with this URL slug already exists' }, { status: 409 });
       }
     }

@@ -1,5 +1,5 @@
 import { adminDb } from '@/lib/firebase/admin';
-import type { DocumentData } from 'firebase-admin/firestore';
+import type { DocumentData, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { getServerUser, type ServerUser } from '@/lib/firebase/server-auth';
 import type { NextRequest } from 'next/server';
 
@@ -18,6 +18,6 @@ export async function authorizeTelegramMedia(request: NextRequest, fileId: strin
   const products = user.role === 'admin'
     ? await adminDb.collection('products').get()
     : await adminDb.collection('products').where('sellerId', '==', user.uid).get();
-  const linked = products.docs.some((doc) => hasFileId(doc.data(), fileId));
+  const linked = products.docs.some((doc: QueryDocumentSnapshot) => hasFileId(doc.data(), fileId));
   return { user, authorized: linked };
 }

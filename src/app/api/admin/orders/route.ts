@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { adminDb } from '@/lib/firebase/admin';
 import { requireServerRole } from '@/lib/firebase/server-auth';
 
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
       adminDb.collection('orders').count().get(),
     ]);
     const orders = snapshot.docs
-      .map((orderDoc) => {
+      .map((orderDoc: QueryDocumentSnapshot) => {
         const data = orderDoc.data();
         const createdAt = data.createdAt;
         return {
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
             : {}),
         };
       })
-      .sort((a, b) => timestampValue(b.createdAt) - timestampValue(a.createdAt));
+      .sort((a: { createdAt?: unknown }, b: { createdAt?: unknown }) => timestampValue(b.createdAt) - timestampValue(a.createdAt));
 
     return NextResponse.json({ orders, count: aggregate.data().count });
   } catch (error) {

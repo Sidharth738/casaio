@@ -4,6 +4,8 @@ export const PRODUCT_IMAGE_REMOTE_HOSTS = [
   'firebasestorage.googleapis.com',
 ] as const;
 
+const TELEGRAM_FILE_ID_PATTERN = /^[A-Za-z0-9_-]{1,256}$/;
+
 /**
  * Product records may outlive image-host configuration changes or contain URLs
  * supplied by sellers. Validate before rendering so bad records use the UI
@@ -23,6 +25,7 @@ export function getSafeProductImageSource(value: unknown): string | null {
   // and render the media through our proxy route instead of exposing it in a
   // public URL.
   if (!source.startsWith('http://') && !source.startsWith('https://')) {
+    if (!TELEGRAM_FILE_ID_PATTERN.test(source)) return null;
     return `/api/telegram/media?fileId=${encodeURIComponent(source)}`;
   }
 

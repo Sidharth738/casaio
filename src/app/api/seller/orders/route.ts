@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import { requireServerRole } from '@/lib/firebase/server-auth';
 import type { Order } from '@/types';
 import { projectSellerOrders } from '@/lib/orders/seller-projection';
@@ -42,7 +43,7 @@ export async function GET(req: NextRequest) {
       .get();
 
     const primaryOrders: Order[] = primarySnapshot.docs.map(
-      (doc) => ({ id: doc.id, ...doc.data() } as Order)
+      (doc: QueryDocumentSnapshot) => ({ id: doc.id, ...doc.data() } as Order)
     );
 
     // Fallback: Query legacy orders missing sellerIds when explicitly requested (supports
@@ -73,8 +74,8 @@ export async function GET(req: NextRequest) {
         }
 
         const candidateOrders: Order[] = recentSnapshot.docs
-          .map((doc) => ({ id: doc.id, ...doc.data() } as Order))
-          .filter((order) => !Array.isArray(order.sellerIds));
+          .map((doc: QueryDocumentSnapshot) => ({ id: doc.id, ...doc.data() } as Order))
+          .filter((order: Order) => !Array.isArray(order.sellerIds));
 
         allOrders = mergeLegacyOrders(primaryOrders, candidateOrders, effectiveSellerId);
       } catch {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
 import { adminDb } from '@/lib/firebase/admin';
-import type { DocumentReference } from 'firebase-admin/firestore';
+import type { DocumentReference, Transaction, QueryDocumentSnapshot } from 'firebase-admin/firestore';
 import type {
   Order,
   OrderItem,
@@ -28,6 +28,11 @@ import {
 } from '@/lib/orders/checkout-validation';
 
 const CHECKOUT_DEDUPE_WINDOW_MS = 2 * 60 * 1000;
+
+type LegacyCouponState = {
+  id: string;
+  state: ReturnType<typeof getLegacyCouponReservationState>;
+};
 
 function generateOrderNumber(): string {
   const timestamp = Date.now().toString().slice(-6);
@@ -68,7 +73,7 @@ export async function POST(req: NextRequest) {
       const priorOrder = priorOrderSnap.data();
       if (priorOrder?.payment?.method === 'razorpay' &&
           (priorOrder.payment.status === 'pending' || priorOrder.payment.status === 'authorized')) {
-        const lockResult = await adminDb.runTransaction(async (transaction) => {
+        const lockResult = await adminDb.runTransaction(async (transaction: Transaction) => {
           const [lockSnap, orderSnap] = await Promise.all([
             transaction.get(activeAttemptRef),
             transaction.get(priorOrderRef),
@@ -104,7 +109,7 @@ export async function POST(req: NextRequest) {
 
     // Heal unresolved orders created before the active-attempt lock was introduced.
     const existingOrders = await adminDb.collection('orders').where('customerId', '==', customerId).get();
-    const legacyUnresolved = existingOrders.docs.find((doc) => {
+    const legacyUnresolved = existingOrders.docs.find((doc: QueryDocumentSnapshot) => {
       const existing = doc.data();
       return existing.payment?.method === 'razorpay' &&
         (existing.payment?.status === 'pending' || existing.payment?.status === 'authorized' ||
@@ -112,7 +117,7 @@ export async function POST(req: NextRequest) {
     });
     if (legacyUnresolved) {
       const order = legacyUnresolved.data();
-      await adminDb.runTransaction(async (transaction) => {
+      await adminDb.runTransaction(async (transaction: Transaction) => {
         const [lockSnap, orderSnap] = await Promise.all([
           transaction.get(activeAttemptRef),
           transaction.get(legacyUnresolved.ref),
@@ -249,7 +254,7 @@ export async function POST(req: NextRequest) {
         // Compatibility path for existing coupons created before the permanent
         // code registry. Fail closed if normalized legacy records are ambiguous.
         const allCoupons = await adminDb.collection('coupons').get();
-        const matchingCoupons = allCoupons.docs.filter((snapshot) => {
+        const matchingCoupons = allCoupons.docs.filter((snapshot: QueryDocumentSnapshot) => {
           const storedCode = snapshot.data().code;
           return typeof storedCode === 'string' && storedCode.trim().toUpperCase() === cleanCouponCode;
         });
@@ -304,7 +309,7 @@ export async function POST(req: NextRequest) {
 
     // 5. Batch write: save order, atomically verify and deduct stock, and empty user's cart
     const cartRef = adminDb.collection('carts').doc(customerId);
-    const transactionResult = await adminDb.runTransaction(async (transaction) => {
+    const transactionResult = await adminDb.runTransaction(async (transaction: Transaction) => {
       const [existingRequest, activeAttempt, checkoutCoordination] = await Promise.all([
         transaction.get(checkoutRequestRef),
         transaction.get(activeAttemptRef),
@@ -470,13 +475,13 @@ export async function POST(req: NextRequest) {
           }
           legacyOrderCount = legacyOrders.docs.length;
 
-          const legacyStates = legacyOrders.docs.map((legacyOrder) => ({
+          const legacyStates: LegacyCouponState[] = legacyOrders.docs.map((legacyOrder: QueryDocumentSnapshot) => ({
             id: legacyOrder.id,
             state: getLegacyCouponReservationState(
               legacyOrder.data(), couponRef!.id, currentCouponRule!.code
             ),
           }));
-          if (legacyStates.some(({ state }) => state === 'ambiguous')) {
+          if (legacyStates.some(({ state }: LegacyCouponState) => state === 'ambiguous')) {
             transaction.set(couponUsageRef, {
               state: 'blocked',
               couponId: couponRef.id,
@@ -487,10 +492,10 @@ export async function POST(req: NextRequest) {
             return { blocked: true, reason: 'coupon-usage-history-requires-reconciliation' };
           }
 
-          legacyUsageCount = legacyStates.filter(({ state }) => state && state !== 'released').length;
+          legacyUsageCount = legacyStates.filter(({ state }: LegacyCouponState) => state && state !== 'released').length;
           legacyReservationWrites = legacyStates
-            .filter(({ state }) => state && state !== 'released')
-            .map(({ id, state }) => ({
+            .filter(({ state }: LegacyCouponState) => state && state !== 'released')
+            .map(({ id, state }: LegacyCouponState) => ({
               ref: couponUsageRef!.collection('reservations').doc(id),
               state: state!,
             }));

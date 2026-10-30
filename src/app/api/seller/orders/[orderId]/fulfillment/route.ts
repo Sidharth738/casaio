@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
-import type { DocumentReference } from 'firebase-admin/firestore';
+import type { DocumentReference, Transaction } from 'firebase-admin/firestore';
 import type { FulfillmentStatus, OrderStatus, OrderItem } from '@/types';
 import { requireServerRole } from '@/lib/firebase/server-auth';
 import { getCouponUserUsageRefs } from '@/lib/coupons/user-usage';
@@ -65,7 +65,7 @@ export async function POST(
 
     // Use a Firestore transaction to prevent lost updates when multiple vendors
     // update line items on the same order concurrently.
-    const result = await adminDb.runTransaction(async (transaction) => {
+    const result = await adminDb.runTransaction(async (transaction: Transaction) => {
       const snap = await transaction.get(orderRef);
 
       if (!snap.exists) {

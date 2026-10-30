@@ -1,4 +1,5 @@
 import { adminDb } from '@/lib/firebase/admin';
+import type { QueryDocumentSnapshot } from 'firebase-admin/firestore';
 
 /**
  * Products with order or review history must be archived, not erased.
@@ -11,7 +12,7 @@ export async function getProductDeletionBlockReason(productId: string): Promise<
     adminDb.collection('reviews').where('productId', '==', productId).limit(1).get(),
   ]);
 
-  const hasOrderHistory = ordersSnapshot.docs.some((orderDoc) => {
+  const hasOrderHistory = ordersSnapshot.docs.some((orderDoc: QueryDocumentSnapshot) => {
     const items = orderDoc.data().items;
     return Array.isArray(items) && items.some((item) => item?.productId === productId);
   });

@@ -24,8 +24,22 @@ test('rejects placeholder and unconfigured external hosts', () => {
 
 test('rejects invalid, insecure, credentialed, and protocol-relative sources', () => {
   assert.equal(getSafeProductImageSource('not a URL'), null);
+  assert.equal(getSafeProductImageSource(''), null);
+  assert.equal(getSafeProductImageSource('not%20a%20URL'), null);
+  assert.equal(getSafeProductImageSource('telegram file id'), null);
   assert.equal(getSafeProductImageSource('http://images.unsplash.com/photo.jpg'), null);
   assert.equal(getSafeProductImageSource('https://user:pass@images.unsplash.com/photo.jpg'), null);
   assert.equal(getSafeProductImageSource('//images.unsplash.com/photo.jpg'), null);
   assert.equal(getSafeProductImageSource(undefined), null);
+});
+
+test('allows valid Telegram file IDs and encodes them in the private media route', () => {
+  assert.equal(
+    getSafeProductImageSource('AgACAgQAAxkBAAI_123-abc_DEF'),
+    '/api/telegram/media?fileId=AgACAgQAAxkBAAI_123-abc_DEF',
+  );
+  assert.equal(
+    getSafeProductImageSource('abc%2Fdef'),
+    null,
+  );
 });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { adminDb } from '@/lib/firebase/admin';
+import type { Transaction } from 'firebase-admin/firestore';
 import { requireServerUser } from '@/lib/firebase/server-auth';
 import { canRetryExistingOrder, configureRazorpayTimeout, getActivePaymentAttemptRef } from '@/lib/payment/attempts';
 import { getRazorpayConfiguration } from '@/lib/payment/razorpay-config';
@@ -129,7 +130,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Payment setup could not be confirmed' }, { status: 503 });
     }
 
-    const persistResult = await adminDb.runTransaction(async (transaction) => {
+    const persistResult = await adminDb.runTransaction(async (transaction: Transaction) => {
       const snapshot = await transaction.get(orderRef);
       const current = snapshot.data();
       if (!snapshot.exists || current?.customerId !== user.uid || current.payment?.method !== 'razorpay') return 'missing';
